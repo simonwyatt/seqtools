@@ -67,8 +67,10 @@ class SeqSlice(SeqReversible):
         SeqSlice('abcdefghijklmnopqrstuvwxyz', slice(None, None, -6))
         >>> ''.join(s4)
         'ztnhb'
-        >>> ascii_lowercase[::-3][::2]
-        'ztnhb'
+        >>> ''.join(s3[1::2])
+        'wqke'
+        >>> ascii_lowercase[::-3][::2], ascii_lowercase[::-3][1::2]
+        ('ztnhb', 'wqke')
     """
     def __init__(self, seq, slice_):
         self.seq = seq
@@ -123,3 +125,7 @@ class SeqSlice(SeqReversible):
     
     def __repr__(self):
         return "SeqSlice({}, {})".format(repr(self.seq), repr(self.slice))
+
+if __name__ == "__main__":
+    import doctest
+    doctest.testmod()

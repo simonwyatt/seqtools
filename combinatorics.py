@@ -27,12 +27,12 @@ Classes:
 """
 
 import itertools, functools, operator
-from collections.abc import Sequence
 from functools import reduce
 
-#from reversed import SeqReversible
+from reversed import Reversed, SeqReversible
+from seqslice import SeqSlice
 
-class Product(Sequence):
+class Product(SeqReversible):
     """
     Product(*sequences, repeat=1) --> Product object
     
@@ -111,12 +111,42 @@ class Product(Sequence):
         return indices
         
     def _elem_at(self, indices):
-        return [s[indices[i]] for i,s in enumerate(self._sequences)]
+        return tuple(s[indices[i]] for i,s in enumerate(self._sequences))
     
-    def _genitems(self, start = None, stop = None, step = None):
-        if self._sequences == (): #Special case for product of empty sequence of sequences.
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            return _ProductSlice(self, index)
+            #TODO: detect when step size divides length of last factor and return product object over smaller factor
+            #if len(self._sequences[-1]) % index.step == 0: ...
+        else:
+            L = self.len()
+            if not (-L <= index < L):
+                raise IndexError("Product index out of range")
+            #else
+            return self._elem_at(self._multi_index(index))
+    
+    def __iter__(self):
+        return itertools.product(*self._sequences) #CPython implements this in C
+        #Alternatively
+        #return iter(_ProductSlice(self, slice(None,None,None)))
+    
+    def __reversed__(self):
+        return self[::-1]
+    def _seqtools_reversed(self):
+        return Product(*(Reversed(s) for s in self._sequences))
+    
+    def __repr__(self):
+        return type(self).__name__ + "(" + ", ".join(repr(s) for s in self._sequences) + ")"
+    
+    #TODO: index searching
+
+class _ProductSlice(SeqSlice):
+    def __iter__(self):
+        if self.seq._sequences == (): #Special case for product of empty sequence of sequences.
             yield ()
             return
+    
+        start, stop, step = self.slice.start, self.slice.stop, self.slice.step
     
         #Initialize generator state.
         if step == 0:
@@ -128,70 +158,30 @@ class Product(Sequence):
             start = 0 if step>0 else -1
         elif start >= self.len():
             return
-        start = self._multi_index(start)
+        start = self.seq._multi_index(start)
         indices = start
-        item = self._elem_at(indices)
+        item = list(self.seq._elem_at(indices))
         
         if stop is not None:
-            stop = self._multi_index(stop)
+            stop = self.seq._multi_index(stop)
         
         #Generate items.
         yield tuple(item) #The first one.
         while stop is None or (step>0 and indices < stop) or (step<0 and stop < indices): #If stop is None we'll explicitly break when done.
             indices[-1] += step
-            pos = len(self._sequences) - 1
+            pos = len(self.seq._sequences) - 1
             #Carry overflows back through multi-index, updating item as we go.
             #We only update the entries of the item that need updating, instead of regenerating the entire item tuple when any part of the index changes.
-            while pos > 0 and not (0 <= indices[pos] < len(self._sequences[pos])):
-                q, indices[pos] = divmod(indices[pos], len(self._sequences[pos]))
+            while pos > 0 and not (0 <= indices[pos] < len(self.seq._sequences[pos])):
+                q, indices[pos] = divmod(indices[pos], len(self.seq._sequences[pos]))
                 indices[pos - 1] += q
-                item[pos] = self._sequences[pos][indices[pos]]
+                item[pos] = self.seq._sequences[pos][indices[pos]]
                 pos -= 1
-            if pos == 0 and not (0 <= indices[pos] < len(self._sequences[pos])): #Ran off end of product.
+            if pos == 0 and not (0 <= indices[pos] < len(self.seq._sequences[pos])): #Ran off end of product.
                 break
             #else
-            item[pos] = self._sequences[pos][indices[pos]] #One more time for last carry.
+            item[pos] = self.seq._sequences[pos][indices[pos]] #One more time for last carry.
             yield tuple(item)
-    
-    def __getitem__(self, index):
-        if isinstance(index, slice):
-            return self._genitems(index.start, index.stop, index.step)
-            #TODO: detect when step size divides length of last factor and return product object over smaller factor
-            #& otherwise provide for slices to be proper sequences too, not just iterators
-        else:
-            if not (-self.len() <= index < self.len()):
-                raise IndexError("Product index out of range")
-            #else
-            return tuple(self._elem_at(self._multi_index(index)))
-    
-    def __iter__(self):
-        #return itertools.product(*self._sequences)
-        return self._genitems()
-    
-    def __reversed__(self):
-        return self[::-1]
-        #TODO: implement a Reversed sequence (and maybe Zipped?), algebraically distribute reversal over factors
-    def _seqtools_reversed(self):
-        pass 
-    
-    def __repr__(self):
-        return type(self).__name__ + "(" + ", ".join(repr(s) for s in self._sequences) + ")"
-    
-    #TODO: index searching
-
-class ProductSlice(Sequence):
-    def __init__(self, seqs, slice_):
-        self._seqs = seq
-        self._slice = slice_
-    
-    def __getitem__(self, index):
-        if isinstance(index, slice):
-            raise NotImplementedError
-        else:
-            
-    
-    def __iter__(self):
-        pass
 
 if __name__ == "__main__":
     import doctest
