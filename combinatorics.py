@@ -1,5 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
+##################################################################################
+# seqtools Copyright (C) 2018 Simon Wyatt <simon.d.wyatt@gmail.com>              #
+# This program is free software: you can redistribute it and/or modify it under  #
+# the terms of the GNU General Public License as published by the Free Software  #
+# Foundation, either version 3 of the License, or (at your option) any later     #
+# version.                                                                       #
+#                                                                                #
+# This program is distributed in the hope that it will be useful, but WITHOUT    #
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS  #
+# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. #
+#                                                                                #
+# You should have received a copy of the GNU General Public License along with   #
+# this program. If not, see <http://www.gnu.org/licenses/>.                      #
+##################################################################################
+
 """
 This module provides sequence types implementing combinatoric operations over other sequences.
 
@@ -8,29 +24,15 @@ All classes fully support
 
 Classes:
     Product: Cartesian product of sequences.
-    
-This program is free software: you can redistribute it and/or modify it under
-the terms of the GNU General Public License as published by the Free Software
-Foundation, either version 3 of the License, or (at your option) any later
-version.
-
-This program is distributed in the hope that it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License along with
-this program. If not, see <http://www.gnu.org/licenses/>.
 """
-__author__ = "Simon Wyatt"
-__email__ = "simon.d.wyatt@gmail.com"
-__version__ = "2018.03.14"
-__license__ = "GPLv3"
 
-import collections.abc
 import itertools, functools, operator
+from collections.abc import Sequence
 from functools import reduce
 
-class Product():
+#from reversed import SeqReversible
+
+class Product(Sequence):
     """
     Product(*sequences, repeat=1) --> Product object
     
@@ -169,13 +171,27 @@ class Product():
     def __reversed__(self):
         return self[::-1]
         #TODO: implement a Reversed sequence (and maybe Zipped?), algebraically distribute reversal over factors
+    def _seqtools_reversed(self):
+        pass 
     
     def __repr__(self):
         return type(self).__name__ + "(" + ", ".join(repr(s) for s in self._sequences) + ")"
     
     #TODO: index searching
 
-collections.abc.Sequence.register(Product)
+class ProductSlice(Sequence):
+    def __init__(self, seqs, slice_):
+        self._seqs = seq
+        self._slice = slice_
+    
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            raise NotImplementedError
+        else:
+            
+    
+    def __iter__(self):
+        pass
 
 if __name__ == "__main__":
     import doctest
