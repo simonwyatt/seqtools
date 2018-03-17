@@ -20,8 +20,19 @@ from collections.abc import Sequence
 from abc import abstractmethod
 
 class SeqReversible(Sequence):
+    """
+    Abstract Base Class for a Sequence that provides its own conversion to a
+    sequence with order reversed, overriding the default behavior of the `Reversed` class.
+    
+    A Sequence class should only inherit from SeqReversible if it can be reversed
+    in some way more efficient than making an explicit copy or iterating over indices
+    in reverse order.
+    """
     @abstractmethod
     def _seqtools_reversed(self):
+        """
+        Return a sequence with the same elements as `self` in reversed order.
+        """
         raise NotImplementedError
 
 class Reversed(SeqReversible):
@@ -36,18 +47,8 @@ class Reversed(SeqReversible):
     Comparison to builtin approaches:
         `reversed(iter)` returns an iterable, which in particular can't compute its length
         or do membership testing.
-        Slicing with [::-1] preserves the type of e.g. lists, which we may not want if `seq`
-        is very large.
-    
-    Construction:
-        The builtin `range` class knows how to reverse itself in an efficient way,
-        and correspondingly, if `seq` is a range then `Reversed(seq) == seq[::-1]`
-    
-        If `seq` claims to know how to reverse itself by providing the `_seqtools_reversed` method
-        of the `SeqReversible` ABC, then likewise `Reversed(seq) == seq._seqtools_reverse()`.
-    
-        Otherwise, `Reversed(seq)` creates a `Reversed` instance, which is a subscript-rewriting
-        wrapper around `seq`. (Nested applications cancel.)
+        Obtaining a reversed sequence with the slice [::-1] preserves the type of e.g. lists,
+        which we may not want if `seq` is very large.
     
     Examples:    
         >>> Reversed(range(20, 30, 3))
@@ -69,6 +70,18 @@ class Reversed(SeqReversible):
         'abcdefghij'
     """
     def __new__(cls, seq):
+        """
+        Create a reversed sequence.
+        
+        Precondition:  `seq` is a sequence.
+        Postcondition: `Reversed(seq)` is a sequence with `seq`'s elements in reverse order.
+            This need not be a `Reversed` object; specifically,
+                1. If `seq` is a range object, `Reversed(seq)` is `seq[::-1]`.
+                2. If `seq` is an instance of the `SeqReversible` ABC,
+                   `Reversed(seq)` is `seq._seqtools_reversed()`.
+                3. Otherwise, `seq` is a `Reversed` object, which is simply a view of `seq`
+                   with indices reversed.
+        """
         # If given sequence is naturally reversible to some sequence of the same type,
         # return that instead of creating a Reversed object
         if isinstance(seq, range):
@@ -81,32 +94,48 @@ class Reversed(SeqReversible):
     def __init__(self, seq):
         self._seq = seq
     
+    def _revindex(self, i):
+        return -1 - i
+    
     def _revslice(self, s):
         start, stop, step = None, None, -1
         
         if s.step is not None:
             step = -s.step
         if s.start is not None:
-            start = -1 - s.start
+            start = self._revindex(s.start)
         if s.stop is not None:
-            stop = -1 - s.stop
+            stop = self._revindex(s.stop)
         
         return slice(start, stop, step)
     
-    #Subscripting: delegate to base sequence via index arithmetic.
+    #Subscripting and searching: delegate to base sequence via index arithmetic.
     def __getitem__(self, index):
         if isinstance(index, slice):
             return self._seq[self._revslice(index)]
         else:
-            return self._seq[-1 - index]
+            return self._seq[self._revindex(index)]
+    def index(self, item, start=0, stop=None):
+        if stop is None:
+            stop = self.len()
+        return self._revindex(self._seq.index(item, self._revindex(start), self._revindex(stop)))
+        
+    # Length & membership testing: delegate to base sequence.
+    def __contains__(self, item):
+        return item in self._seq
+        # Correctness argument: `Reversed(seq)` must contain precisely the same
+        #     elements as `seq` to satisfy the specification of `Reversed`.
+    def count(self, item):
+        return self._seq.count(item)
     
-    #Length & membership testing: delegate to base sequence.
+    # Correctness argument: The length of a sequence is invariant under reversal.
     def __len__(self):
         return len(self._seq)
     def len(self):
-        return self._seq.len()
-    def __contains__(self, item):
-        return item in self._seq
+        try: #use overflow-safe len method if available,
+            return self._seq.len()
+        except AttributeError: #else fall back on builtin len
+            return len(self._seq)
     
     #Iteration: delegate to the base sequence with order interchanged.
     def __iter__(self):
