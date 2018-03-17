@@ -83,8 +83,9 @@ class SeqSlice(SeqReversible):
         self.i_start, self.i_stop, _ = slice_.indices(L)
     
     def len(self):
+        # Algorithm reproduced from CPython implementation of slicing for ranges.
         start, stop, _ = self.slice.indices(self._baselen)
-        return (abs(self.i_stop - self.i_start) - 1) // abs(self.slice.step) + 1
+        return (abs(self.i_stop - self.i_start) - 1) // abs(self.slice.step or 1) + 1
     def __len__(self):
         return self.len()
     
@@ -112,19 +113,22 @@ class SeqSlice(SeqReversible):
             if not (-L <= index < L):
                 raise IndexError("SeqSlice index out of range")
             return self.seq[self.i_start + index*self.slice.step]
+        # TODO: correctness arguments for all methods here, but especially this one!
     
     def _seqtools_reversed(self):
         start = start + (self.len() - 1) * self.slice.step
         stop = start - self.slice.step
         step = -self.slice.step
         return type(self)(self.seq, slice(start, stop, step))
+        # TODO: eliminate redundant index arithmetic here and return self[::-1]
     
     # __contains__, __iter__, __reversed__ use the inherited Sequence methods,
     # which just use __len__ and __getitem__ to traverse the list like a C array.
     # Most sequences can probably construct a more-efficient implementation.
     
     def __repr__(self):
-        return "SeqSlice({}, {})".format(repr(self.seq), repr(self.slice))
+        (start, stop, step) = (str(i) if i is not None else "" for i in (self.slice.start, self.slice.stop, self.slice.step))
+        return "{}[{}:{}:{}]".format(repr(self.seq), start, stop, step)
 
 if __name__ == "__main__":
     import doctest

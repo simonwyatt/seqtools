@@ -26,7 +26,10 @@ class SeqReversible(Sequence):
 
 class Reversed(SeqReversible):
     """
-    `Reversed(seq)` is a sequence that contains the same elements as `seq` in reversed order.
+    Precondition:  `seq` is a sequence.
+    Postcondition: `Reversed(seq)` is a sequence that contains the same elements as `seq`
+    in reversed order.
+    
     This is particularly useful for virtual large sequences that construct a lot of elements
     lazily from indices without storing them all in memory.
     
@@ -66,8 +69,8 @@ class Reversed(SeqReversible):
         'abcdefghij'
     """
     def __new__(cls, seq):
-        #If given sequence is naturally reversible to some sequence of the same time,
-        #return that instead of creating a Reversed object
+        # If given sequence is naturally reversible to some sequence of the same type,
+        # return that instead of creating a Reversed object
         if isinstance(seq, range):
             return seq[::-1] #ranges do the right thing by default
         elif isinstance(seq, SeqReversible):

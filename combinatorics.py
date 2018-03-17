@@ -19,8 +19,14 @@
 """
 This module provides sequence types implementing combinatoric operations over other sequences.
 
-In comparison to the built-in itertools module, combinatoric sequences provide the richer sequence interface but require sequence inputs.
-All classes fully support 
+Combinatoric sequences versus combinatoric generators from `itertools`:
+    + Are sequences, and support e.g. `len`, `in`, subscripts, and slicing.
+    - Require sequence inputs (not merely iterables).
+
+Combinatoric sequences versus constructing a tuple from an `itertools` generator:
+    + Evaluate lazily, avoiding explicitly storing each element.
+    - Lazy evaluation is by reference to the original inputs, so providing mutable inputs
+      and then mutating them may result in undefined behavior.
 
 Classes:
     Product: Cartesian product of sequences.
@@ -34,28 +40,38 @@ from seqslice import SeqSlice
 
 class Product(SeqReversible):
     """
-    Product(*sequences, repeat=1) --> Product object
+    Precondition : `sequences` is an immutable sequence of immutable sequences.
+    Postcondition: `Product(*sequences)` is the sequence consisting of the Cartesian product of the sequences from `sequences`,
+    produced in the lexicographic order derived from the orderings of each input sequence.
+    (i.e., if given the sequence "ACB" as input, the output orders "C" before "B".)
+    `Product(*sequences, repeat=n)` is the nth Cartesian power of `Product(*sequences)`.
     
-    Cartesian product of input sequences.
-    Equivalent to list(itertools.product(*sequences, repeat)) but without storing a large list.
+    Standard warning about combinatoric sequences: Providing mutable inputs and then mutating them may result in undefined behavior.
     
-    >>> list(Product((0,1), repeat=3))
-    [(0, 0, 0), (0, 0, 1), (0, 1, 0), (0, 1, 1), (1, 0, 0), (1, 0, 1), (1, 1, 0), (1, 1, 1)]
+    Examples:
+        >>> list(Product((0,1), repeat=3))
+        [(0, 0, 0), (0, 0, 1), (0, 1, 0), (0, 1, 1), (1, 0, 0), (1, 0, 1), (1, 1, 0), (1, 1, 1)]
     
-    >>> all(x==y for x, y in zip(Product((0,1), repeat=3), itertools.product((0,1), repeat=3)))
-    True
+        >>> all(x==y for x, y in zip(Product((0,1), repeat=3), itertools.product((0,1), repeat=3)))
+        True
     
-    >>> list(Product((0,), (1,), (2,)))
-    [(0, 1, 2)]
+        >>> list(Product((0,), (1,), (2,)))
+        [(0, 1, 2)]
     
-    >>> list(Product())
-    [()]
+        >>> list(Product())
+        [()]
+    """
+    
+    """
+    Abstraction function: the tuple (s1, ..., sn) represents the Cartesian product of the sequences s1, ..., sn.
+    Representation invariant: The sequences s1, ..., sn are immutable.
     """
     def __init__(self, *sequences, repeat=1):
         self._sequences = sequences * repeat
     
     def len(self):
-        """Compute number of elements in Cartesian product (integer product of lengths of factors).
+        """Compute length, avoiding CPython's implementation constraint that the return value of `__len__` may not exceed `sys.maxsize`."""
+        """
         >>> Product((0,1), repeat=3).len()
         8
         
@@ -69,74 +85,115 @@ class Product(SeqReversible):
         1000000000000000000000000000000000000000000000000000000000000
         """
         return functools.reduce(operator.mul, (len(s) for s in self._sequences), 1)
-        """The initial value 1 is necessary to correctly compute the length of the cartesian product of no sets.
-        (The empty tuple is the only way of choosing one element from each of no sets.)"""
+        # Correctness argument: This is the well-known formula for the cardinality of the Cartesian product of finite sets.
+        # (Recall that the empty Cartesian product is {()}, the set whose sole element is the empty tuple.)
+        
     
     def __len__(self):
-        """Compute number of elements in Cartesian product.
-        
-        This method just calls and returns `self.len()`.
-        
-        However, in CPython, the builtin `len` raises an OverflowError if its value would exceed `sys.maxsize` (2**31 - 1 on 64-bit platforms).
-        When working with large sequences, it's easy to exceed this limit; at this point you can no longer use the full sequence interface and must call Product.len instead."""
         return self.len()
     
     def __contains__(self, item):
-        """Membership test. Returns true iff each element of `item` is in the corresponding input to `self`.
-        Returns false iff `item` has a plausible type to belong to `self` but doesn't; `TypeError` is not caught.
+        """Return `item in self`.
+        True iff each element of `item` is in the corresponding input to `self`.
+        False iff `item` has a plausible type to belong to `self` but doesn't; `TypeError` is not caught.
         
-        >>> (1, 'A') in Product((0,1), "AB")
-        True
+        Examples:
+            >>> (1, 'A') in Product((0,1), "AB")
+            True
         
-        >>> (0, 'C') in Product((0,1), "AB")
-        False
+            >>> (0, 'C') in Product((0,1), "AB")
+            False
         
-        >>> (1, 1) in Product((0,1), "AB")
-        Traceback (most recent call last):
-          ...
-        TypeError: 'in <string>' requires string as left operand, not int
+            >>> (1, 1) in Product((0,1), "AB")
+            Traceback (most recent call last):
+              ...
+            TypeError: 'in <string>' requires string as left operand, not int
         
-        >>> 1 in Product((0,1), repeat=3)
-        Traceback (most recent call last):
-          ...
-        TypeError: 'int' object is not subscriptable
+            >>> 1 in Product((0,1), repeat=3)
+            Traceback (most recent call last):
+              ...
+            TypeError: 'int' object is not subscriptable
         """
         return all(item[i] in s for i,s in enumerate(self._sequences))
+        # Correctness argument: This is the definition of the Cartesian product.
+        
+        # THIS METHOD NEEDS TO BE RETHOUGHT.
+        # `(1, 0) in Product((0,1), "AB")` raises TypeError:
+        #   first we see that `1 in (0,1)`, so then we check `0 in "AB"` and raise TypeError.
+        # BUT
+        # `(2, 0) in Product((0,1), "AB")` returns False:
+        #   because `2 in (0, 1)` is False, evaluation of `all` short-circuits.
+        # PROPOSAL: only raise TypeError in a case like `1 in Product((0,1), repeat=3)` where the given item is not even a tuple.
+        # if not isinstance(item, tuple):
+        #   raise TypeError("'in <{}>' requires tuple as left operand, not {}".format(type(self), type(item)))
+        # otherwise catch TypeErrors where an element of `item` is incompatible with the corresponding factor and return False
     
     def _multi_index(self, i):
-        indices = []
+        """
+        Compute indices into each factor corresponding to index in product.
+        
+        Precondition : `i` is an integer.
+        Postcondition: Let `self` be the product `Product(s[0], ..., s[n-1])` of `n` sequences.
+        Then `self._multi_index(i)` is the tuple `(i[0], ..., i[n-1])` with the property that
+        `(s[0][i[0]], ..., s[n-1][i[n-1]]) = self[i % len(self)]`.
+        """
+        indices = ()
         for s in self._sequences[::-1]:
             i, j = divmod(i, len(s))
-            indices = [j,] + indices
+            indices = (j,) + indices
         return indices
+        # Correctness argument:
+        # PENDING. Inductive. On number of factors? On i?
         
     def _elem_at(self, indices):
-        return tuple(s[indices[i]] for i,s in enumerate(self._sequences))
+        """
+        Get one element from each factor using tuple of indices.
+        
+        Precondition : `indices` is a sequence `(i[0], ..., i[n-1])` of `n` integers,
+            where `self` is the product `Product(s[0], ..., s[n-1])` of `n` sequences.
+        Postcondition: `self._elem_at(indices)` is the tuple `(s[0][i[0]], ..., s[n-1][i[n-1]])`.
+        """
+        return tuple(s[indices[i]] for i, s in enumerate(self._sequences))
+        # Correctness argument: (s[indices[i]] for i, s in enumerate(self._sequences))
+        # is equivalent to (self._sequences[i][indices[i]] for i in range(len(self._sequences))),
+        # which is a generator expression for the sequence of values required by the postcondition.
     
     def __getitem__(self, index):
+        """
+        
+        """
         if isinstance(index, slice):
             return _ProductSlice(self, index)
-            #TODO: detect when step size divides length of last factor and return product object over smaller factor
-            #if len(self._sequences[-1]) % index.step == 0: ...
+            # TODO: detect when step size divides length of last factor and return product object over smaller factor
+            # if len(self._sequences[-1]) % index.step == 0: ...
+            # & similar cases.
         else:
             L = self.len()
             if not (-L <= index < L):
                 raise IndexError("Product index out of range")
+                #if we didn't do this explicitly, the following would return `self[index % L]`
             #else
             return self._elem_at(self._multi_index(index))
+        # Correctness argument: PENDING
     
     def __iter__(self):
         return itertools.product(*self._sequences) #CPython implements this in C
-        #Alternatively
-        #return iter(_ProductSlice(self, slice(None,None,None)))
+        # Alternatively:
+        # return iter(self[::])
     
     def __reversed__(self):
-        return self[::-1]
+        return iter(self[::-1])
     def _seqtools_reversed(self):
         return Product(*(Reversed(s) for s in self._sequences))
     
     def __repr__(self):
         return type(self).__name__ + "(" + ", ".join(repr(s) for s in self._sequences) + ")"
+    
+    def __eq__(self, other):
+        if isinstance(other, Product):
+            return self._sequences == other._sequences
+        else:
+            return NotImplemented
     
     #TODO: index searching
 
@@ -158,12 +215,11 @@ class _ProductSlice(SeqSlice):
             start = 0 if step>0 else -1
         elif start >= self.len():
             return
-        start = self.seq._multi_index(start)
-        indices = start
+        indices = list( self.seq._multi_index(start) )
         item = list(self.seq._elem_at(indices))
         
         if stop is not None:
-            stop = self.seq._multi_index(stop)
+            stop = list(self.seq._multi_index(stop)) # We won't mutate `stop`, but it has to be comparable to the mutable `indices`.
         
         #Generate items.
         yield tuple(item) #The first one.
@@ -182,6 +238,10 @@ class _ProductSlice(SeqSlice):
             #else
             item[pos] = self.seq._sequences[pos][indices[pos]] #One more time for last carry.
             yield tuple(item)
+        
+        # Correctness argument:
+        # PENDING. Most complex and most important method for products, will have most complex & important proof.
+        # CURRENTLY KNOWN BUGGY. stop element is included!
 
 if __name__ == "__main__":
     import doctest
