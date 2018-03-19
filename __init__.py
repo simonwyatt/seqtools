@@ -28,5 +28,5 @@ Modules:
 """
 __author__ = "Simon Wyatt"
 __email__ = "simon.d.wyatt@gmail.com"
-__version__ = "2018.03.14"
+__version__ = "2018.03.19"
 __license__ = "GPLv3"

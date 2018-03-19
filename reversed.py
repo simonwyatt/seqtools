@@ -92,43 +92,127 @@ class Reversed(SeqReversible):
             return super(Reversed, cls).__new__(cls)
 
     def __init__(self, seq):
+        """
+        Initialize Reversed instance `self`.
+        
+        Abstraction function: The sequence `seq` in reversed order is simply represented by a reference to `seq`;
+            the methods of the Reversed class access this reference in reversed order.
+        Representation invariant: 
+        """
         self._seq = seq
     
     def _revindex(self, i):
+        """
+        Reverse an index.
+        
+        Precondition:  `i` is an integer.
+        Postcondition: `self._revindex(i)` is the item at position `i` in `self._seq`,
+        counting backwards from the end of `self._seq`.
+        """
+        # Correctness argument:
+        # Using the definition of negative indices in Python sequences, let `self._seq` be the sequence
+        #   (s[-L], s[-L+1], ..., s[-2], s[-1]).
+        # The mapping i -> -1 - i maps the indices 0, 1, ..., L-2, L-1 to -1, -2, ..., -L+1, -L,
+        # accessing the elements of `self._seq` in reverse order as desired.
         return -1 - i
     
     def _revslice(self, s):
+        """
+        Reverse a slice.
+        
+        Precondition:  `s` is a slice instance.
+        Postcondition: `self._revslice(s)` is a slice object having the property that
+            self._seq[self._revslice(s)] == self._seq[::-1][s]
+        """
+        # Correctness argument:
         start, stop, step = None, None, -1
+        # If step size is not supplied, `self._seq` should be traversed with step size -1
+        # to implement the usual default step size of 1 through a reversed view of `self._seq`.
         
         if s.step is not None:
             step = -s.step
+            # If a step size is supplied, then taking this size of step through the reversed sequence
+            # is equivalent to taking the opposite step through the original sequence.
         if s.start is not None:
             start = self._revindex(s.start)
+            # Position `s.start` in the reversed sequence is equivalent to this position in the original sequence
+            # by the specification of _revindex.
+            # If no starting position is supplied, the default behavior is to start from whichever end of the
+            # sequence is appropriate given the step size, so the negated step size correctly reverses the starting position.
         if s.stop is not None:
             stop = self._revindex(s.stop)
+            # Same argument as for `start`, mutatis mutandis.
         
+        # So `start`, `stop`, `step` are all now correct to slice `self._seq` in the correct way.
         return slice(start, stop, step)
     
-    #Subscripting and searching: delegate to base sequence via index arithmetic.
+    # Subscripting and searching: delegate to base sequence via index arithmetic.
     def __getitem__(self, index):
+        """
+        Compute self[index].
+        
+        Precondition:  `index` is an integer (-self.len() <= index < self.len) or slice object.
+        Postcondition: `self[index]` is the item that would be obtained by `self._seq[index]`
+            if `self._seq` was indexed in reversed order, i.e.
+            self[index] == self._seq[::-1][index].
+        """
+        # Correctness argument: By division into cases.
+        # Each of the functions `_revslice` and `_revindex` specify that they return the correct index
+        # to obtain the desired results by subscripting `self._seq`.
         if isinstance(index, slice):
             return self._seq[self._revslice(index)]
         else:
             return self._seq[self._revindex(index)]
+    
     def index(self, item, start=0, stop=None):
+        """
+        Return the least positive integer `i` such that `self[i] == item`
+        and `self[i]` is contained in the slice `self[start:stop]`.
+        Raise ValueError if no such integer exists.
+        """
+        
+        # If no `stop` parameter provided, stop at the end of the sequence.
         if stop is None:
             stop = self.len()
-        return self._revindex(self._seq.index(item, self._revindex(start), self._revindex(stop)))
+            
+        if hasattr(self._seq, "rindex"): # Underlying sequence supports reversed index search --
+                                         # More efficient than squeezing whole search algorithm through Reversed wrapper
+            # Compute start position of search in underlying sequence: Based on end position of reversed search
+            rstart = self._revindex(stop) + 1
+            # +1 to exclude the reversed `stop` position from being searched,
+            # since it reverses to the (included) `start` position in the reversed search.
+            
+            # Compute stop position in underlying sequence from start position of reversed search:
+            if start == 0:
+                rstop = self.len()
+                # In this case the last index to be searched is -1.
+                # So adding 1 produces 0 and incorrectly stops the search before it starts!
+                # Instead specify a positive `stop` position just above the end of the underlying sequence.
+            else:
+                rstop = self._revindex(start) + 1
+                # +1 to keep searching & include the reversed `start` position in the search,
+                # since it reverses to the (excluded) `stop` position in the reversed search.
+            
+            # Use `rindex` to search underlying sequence, then reverse that index to obtain the corresponding index in `self`.
+            # But `_revindex` gives the negative solution and we specified the positive, so correct by adding `self.len()`.
+            index = self._revindex(self._seq.rindex(item, rstart, rstop)) + self.len()
+            
+            return index
+        else: # Fall back on default Sequence implementation -- this gets & checks items one at a time
+            # Correctness follows from correctness of __getitem__
+            super().index(item, start, stop)
         
-    # Length & membership testing: delegate to base sequence.
+    # Membership testing & counting: Invariant under reversal.
     def __contains__(self, item):
         return item in self._seq
         # Correctness argument: `Reversed(seq)` must contain precisely the same
         #     elements as `seq` to satisfy the specification of `Reversed`.
     def count(self, item):
         return self._seq.count(item)
+        # Correctness argument: Per spec of `Reversed`,
+        # number of occurrences of `item` in `Reversed(seq)` must equal that in `seq`.
     
-    # Correctness argument: The length of a sequence is invariant under reversal.
+    # Length: Invariant under reversal.
     def __len__(self):
         return len(self._seq)
     def len(self):
@@ -137,7 +221,7 @@ class Reversed(SeqReversible):
         except AttributeError: #else fall back on builtin len
             return len(self._seq)
     
-    #Iteration: delegate to the base sequence with order interchanged.
+    # Iteration: delegate to the base sequence with order interchanged.
     def __iter__(self):
         return reversed(self._seq)
     def __reversed__(self):
