@@ -235,8 +235,10 @@ class SeqSlice(SeqReversible):
             # This requires bounds-checking using multiple occurrence of `self.len()`;
             # compute and save this value once now.
             L = self.len()
+        reversed_ = s.step is not None and s.step < 0 # We will use this to reason about how the start & stop should be computed
         
         # Compose start parameter:
+        clipping_start_to_old_stop = False
         if s.start is not None:
             # Bounds-check the given value of `s.stop`
             if -L <= s.start < L: # In-bounds.
@@ -246,22 +248,30 @@ class SeqSlice(SeqReversible):
             elif ((s.start >= L and (s.step is     None or  s.step > 0))   # Start after  back  with positive step.
               or  (s.start < -L and (s.step is not None and s.step < 0))): # Start before front with negative step.
                 # Slice starts too late to capture any elements.
-                ## Clip `start` to equal `stop`, forcing empty slice.
-                #start = stop
+                # We can't force an empty slice by clipping start = stop because maybe stop is None and
+                # we end up taking all the elements instead of none of them.
+                # In fact we can't elegantly generate a slice that's guaranteed empty,
+                # (the only way is to bounce `start` outside the bounds of `self._seq` even if `self` lies deep inside)
+                # so make it the caller's problem to handle:
                 raise EmptySubsliceException
-            # Otherwise, slice starts too early: clip `start` to `self._slice.start`,
-            # its initial value, which we don't need to change.
+            # Otherwise, slice starts too early. Consider direction:
+            elif reversed_:
+                clipping_start_to_old_stop = True
+            # Otherwise clip `start` to `self._slice.start`, its initial value, which we don't need to change.
         # If `s.start` is None, default behavior depends on the sign of `s.step`.
+        # If stepping backward,
+        elif reversed_:
+            # This case is an implied start from the *end* of `self`, so
+            clipping_start_to_old_stop = True
         # If `s.step` is None or positive, this is an implied start from the start of `self`,
         #   which is what we already initialized `start` to, and we don't need to change it.
-        elif s.step is not None and s.step < 0:
-            # This case is an implied start from the *end* of `self`, so
+        
+        # Follow up on cases flagged for start from old stop:
+        if clipping_start_to_old_stop:
             start = self._compose_index(-1)
     
         # Compose stop parameter:
-        # If `s.stop` is None, just keep going through `self._seq` until we run off the end of `self`,
-        # which by definition is at `self._slice.stop`,
-        # which is what we already initialized `stop` to, and we don't need to change it.
+        clipping_stop_to_old_start = False
         if s.stop is not None:
             # Bounds-check the given value of `s.stop`:
             if -L <= s.stop < L: # The given `s.stop` actually lies within `self`.
@@ -271,11 +281,44 @@ class SeqSlice(SeqReversible):
             elif ((s.stop < -L and (s.step is     None or  s.step > 0))   # Stop before front with positive step.
               or  (s.stop >= L and (s.step is not None and s.step < 0))): # Stop after  back  with negative step.
                 # Slice stops too early to capture any elements.
-                ## Clip `stop` to equal `start`, forcing an empty slice.
-                #stop = start
                 raise EmptySubsliceException
-            # Otherwise, slice stops too late: clip `stop` to `self._slice.stop`,
-            # its initial value, which we don't need to change.
+            # Otherwise, slice stops too late:
+            # If stepping backwards through `self`, clip to start:
+            elif reversed_:
+                clipping_stop_to_old_start = True
+            # Otherwise clip `stop` to `self._slice.stop`, its initial value, which we don't need to change.
+        # If `s.stop` is None, just keep going through `self._seq` until we run off the end of `self`.
+        # If stepping backward through `self`:
+        elif reversed_:
+            clipping_stop_to_old_start = True
+        # Otherwise, `s.step` is none or positive, we are stepping towards `self._slice.stop`,
+        # which is what we already initialized `stop` to, and we don't need to change it.
+        
+        # Now follow up on the cases we flagged as needing to set the new `stop` based on the old `start`:
+        if clipping_stop_to_old_start:
+            if self._slice.start is None or self._slice.start == 0:
+                # Special case: Force slice to go backwards off the front of the underlying sequence
+                # by setting `stop` to None.
+                stop = None
+                # The general case would calculate -1 here, but that means the back of the sequence,
+                # which is completely opposite what we wanted.
+                # Writing something like `-self._baselen() - 1` would be unsatisfactory
+                # because this is not guaranteed to still go off the front of `self._seq` if it is mutated.
+            else:
+                # The old start still needs to be included, so stop one index past it.
+                stop = self._slice.start - 1
+        
+        # This should be a fix but breaks things worse?
+        """if clipping_stop_to_old_start:
+            # General case: The old start still needs to be included, so stop one step past it.
+            if (self._slice.start is None
+                or 0 <= self._slice.start < -step
+                or -step <= self._slice.start < 0):
+                # Special case: Taking "one step past the old start" would cross the zero index in the base sequence,
+                # wrapping around to mean the opposite end of the sequence from that intended. Instead use None.
+                stop = None
+            else:
+                stop = self._slice.start + step"""
         
         return slice(start, stop, step)
     

@@ -73,17 +73,16 @@ class TestSeqSlice(unittest.TestCase):
         breakpoint = (object(), object())
         #breakpoint = ((None, 6, None,), (-8, None, None))
         
-        for args_o in itertools.product(starts_o, stops_o, steps): # 5**3 = 125 cases
+        for args_o in itertools.product(starts_o, stops_o, steps):
             index_o = slice(*args_o)
             outer = SeqSlice(ascii_lowercase, index_o)
-            for args_i in itertools.product(starts_i, stops_i, steps): # 125**2 = 15625 cases
-                #if args_i[2] is not None and args_i[2] < 0:
-                #    continue # Skip subslices with negative steps for now
+            for args_i in itertools.product(starts_i, stops_i, steps):
+                if False and args_i[2] is not None and args_i[2] < 0:
+                    continue # Skip subslices with negative steps for now
                 
                 index_i = slice(*args_i)
                 if (args_o, args_i) == breakpoint:
-                    import pdb
-                    pdb.set_trace()
+                    import pdb; pdb.set_trace()
                 
                 inner = outer[index_i]
                 
