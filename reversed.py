@@ -219,7 +219,7 @@ class Reversed(SeqReversible):
         try: #use overflow-safe len method if available,
             return self._seq.len()
         except AttributeError: #else fall back on builtin len
-            return len(self._seq)
+            return len(self._seq) #still could raise OverflowError if `self._seq` is huge but not of a type supporting overflow-safe len
     
     # Iteration: delegate to the base sequence with order interchanged.
     def __iter__(self):
