@@ -18,6 +18,9 @@
 
 from reversed import SeqReversible
 
+class EmptySubsliceException(Exception):
+    pass
+
 class SeqSlice(SeqReversible):
     """
     Base class for smart slices of sequence types.
@@ -92,11 +95,12 @@ class SeqSlice(SeqReversible):
     
     # Future: Consider overriding __new__ to just return the base sequence without allocating a new wrapper object
     # when using a trivial slice: step in (None, 1) and start in (None, 0, -L) and (stop is None or stop >= L)
-    # Also could do something like
-    # if isinstance(seq, SeqSliceable):
+    # Also could do something similar to Reversed like using a new ABC to write something like
+    # if cls is SeqSlice and isinstance(seq, SeqSliceable):
     #   return seq[slice_]
-    # but we have to make sure that the seq type's SeqSlice subclass doesn't just recursively keep doing this
-    # without ever allocating an instance.
+    # where the first part of the condition is to stop an infinite recursion when this __new__ is
+    # inherited by the subclasses.
+
     
     def _baselen(self):
         try:
@@ -199,7 +203,10 @@ class SeqSlice(SeqReversible):
     def _compose_slice(self, s):
         """
         Precondition:  `s` is a slice object.
-        Postcondition: `self._compose_slice(s)` is a slice object `t` such that
+        Postcondition: If `s` specifies that `self[s]` stops before the beginning or starts after the end of `self`,
+            (where "before", "after", "beginning", and "end" are all relative to the step direction specified by `s`)
+            then EmptySubsliceException is raised.
+            Otherwise, `self._compose_slice(s)` is a slice object `t` such that
             `self[s]` and `self._seq[t]` are elementwise equal as sequences.
         """
         # THIS IS HARDER TO GET RIGHT THAN YOU THINK.
@@ -239,8 +246,9 @@ class SeqSlice(SeqReversible):
             elif ((s.start >= L and (s.step is     None or  s.step > 0))   # Start after  back  with positive step.
               or  (s.start < -L and (s.step is not None and s.step < 0))): # Start before front with negative step.
                 # Slice starts too late to capture any elements.
-                # Clip `start` to equal `stop`, forcing empty slice.
-                start = stop
+                ## Clip `start` to equal `stop`, forcing empty slice.
+                #start = stop
+                raise EmptySubsliceException
             # Otherwise, slice starts too early: clip `start` to `self._slice.start`,
             # its initial value, which we don't need to change.
         # If `s.start` is None, default behavior depends on the sign of `s.step`.
@@ -263,8 +271,9 @@ class SeqSlice(SeqReversible):
             elif ((s.stop < -L and (s.step is     None or  s.step > 0))   # Stop before front with positive step.
               or  (s.stop >= L and (s.step is not None and s.step < 0))): # Stop after  back  with negative step.
                 # Slice stops too early to capture any elements.
-                # Clip `stop` to equal `start`, forcing an empty slice.
-                stop = start
+                ## Clip `stop` to equal `start`, forcing an empty slice.
+                #stop = start
+                raise EmptySubsliceException
             # Otherwise, slice stops too late: clip `stop` to `self._slice.stop`,
             # its initial value, which we don't need to change.
         
@@ -275,7 +284,15 @@ class SeqSlice(SeqReversible):
         Return `self[index]`.
         """
         if isinstance(index, slice):
-            return type(self)(self._seq, self._compose_slice(index))
+            try:
+                subslice = self._compose_slice(index)
+            except EmptySubsliceException:
+                try:
+                    return type(self._seq)() # Empty instance of tuples, lists, strings.
+                except TypeError: 
+                    return () # Fall back on returning empty tuple, but may violate type assumptions.
+            else:
+                return type(self)(self._seq, subslice)
         else:
             # Check bounds before attempting index arithmetic; precondition of _compose_index requires this to happen here
             L = self.len()

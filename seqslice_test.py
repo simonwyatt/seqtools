@@ -77,8 +77,8 @@ class TestSeqSlice(unittest.TestCase):
             index_o = slice(*args_o)
             outer = SeqSlice(ascii_lowercase, index_o)
             for args_i in itertools.product(starts_i, stops_i, steps): # 125**2 = 15625 cases
-                if args_i[2] is not None and args_i[2] < 0:
-                    continue # Skip subslices with negative steps for now
+                #if args_i[2] is not None and args_i[2] < 0:
+                #    continue # Skip subslices with negative steps for now
                 
                 index_i = slice(*args_i)
                 if (args_o, args_i) == breakpoint:
@@ -89,7 +89,13 @@ class TestSeqSlice(unittest.TestCase):
                 
                 expected = ascii_lowercase[index_o][index_i]
                 result = ''.join(inner)
-                with self.subTest(s1 = index_o, s2 = index_i, composed = (inner._slice.start, inner._slice.stop, inner._slice.step)):
+                
+                try:
+                    composed = (inner._slice.start, inner._slice.stop, inner._slice.step)
+                except AttributeError: # fell back
+                    composed = "<empty non-slice object>"
+                
+                with self.subTest(s1 = index_o, s2 = index_i, composed = composed):
                     self.assertEqual(result, expected)
 
 if __name__ == '__main__':
