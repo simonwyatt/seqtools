@@ -54,7 +54,6 @@ class TestSeqSlice(unittest.TestCase):
                 # Iteration produces the correct items.
                 self.assertEqual(''.join(instance), expected)
     
-    #@unittest.skip("not implemented")
     def test_sub_slice(self):
         """
         Check that slices of SeqSlice instances are new SeqSlice instances with
@@ -70,20 +69,11 @@ class TestSeqSlice(unittest.TestCase):
         
         steps    = (None, 1, -1, 2, -3)
         
-        breakpoint = (object(), object())
-        #breakpoint = ((None, 6, None,), (-8, None, None))
-        
         for args_o in itertools.product(starts_o, stops_o, steps):
             index_o = slice(*args_o)
             outer = SeqSlice(ascii_lowercase, index_o)
             for args_i in itertools.product(starts_i, stops_i, steps):
-                if False and args_i[2] is not None and args_i[2] < 0:
-                    continue # Skip subslices with negative steps for now
-                
                 index_i = slice(*args_i)
-                if (args_o, args_i) == breakpoint:
-                    import pdb; pdb.set_trace()
-                
                 inner = outer[index_i]
                 
                 expected = ascii_lowercase[index_o][index_i]

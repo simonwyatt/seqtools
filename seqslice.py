@@ -305,20 +305,9 @@ class SeqSlice(SeqReversible):
                 # Writing something like `-self._baselen() - 1` would be unsatisfactory
                 # because this is not guaranteed to still go off the front of `self._seq` if it is mutated.
             else:
-                # The old start still needs to be included, so stop one index past it.
-                stop = self._slice.start - 1
-        
-        # This should be a fix but breaks things worse?
-        """if clipping_stop_to_old_start:
-            # General case: The old start still needs to be included, so stop one step past it.
-            if (self._slice.start is None
-                or 0 <= self._slice.start < -step
-                or -step <= self._slice.start < 0):
-                # Special case: Taking "one step past the old start" would cross the zero index in the base sequence,
-                # wrapping around to mean the opposite end of the sequence from that intended. Instead use None.
-                stop = None
-            else:
-                stop = self._slice.start + step"""
+                # The old start still needs to be included, so stop one index past it,
+                # where "past" is relative to the step direction.
+                stop = self._slice.start + (1 if step>0 else -1)
         
         return slice(start, stop, step)
     
