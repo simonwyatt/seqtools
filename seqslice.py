@@ -332,7 +332,6 @@ class SeqSlice(SeqReversible):
                 raise IndexError("SeqSlice index out of range")
             
             return self._seq[self._compose_index(index)]
-        # TODO: correctness arguments for all methods here, but especially this one!
     
     def _seqtools_reversed(self):
         return self[::-1]

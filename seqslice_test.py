@@ -77,7 +77,6 @@ class TestSeqSlice(unittest.TestCase):
                 inner = outer[index_i]
                 
                 expected = ascii_lowercase[index_o][index_i]
-                result = ''.join(inner)
                 
                 try:
                     composed = (inner._slice.start, inner._slice.stop, inner._slice.step)
@@ -85,7 +84,26 @@ class TestSeqSlice(unittest.TestCase):
                     composed = "<empty non-slice object>"
                 
                 with self.subTest(s1 = index_o, s2 = index_i, composed = composed):
-                    self.assertEqual(result, expected)
+                    # Length matches
+                    L = len(expected)
+                    self.assertEqual(len(inner), L)
+                    
+                    # Items the same at selected in-bounds indices
+                    for i in (-L, -1, 0, 1, L - 1):
+                        if -L <= i < L: # Not all of these indices will be in bounds for all subslices,
+                                        # (e.g., sometimes inner is expected to be empty)
+                                        # so only test the ones that are.
+                            with self.subTest(pos=i):
+                                self.assertEqual(inner[i], expected[i])
+                    
+                    # Boundaries at expected locations
+                    for bad_i in (-L - 1, L):
+                        with self.subTest(pos = bad_i):
+                            with self.assertRaises(IndexError):
+                                inner[bad_i]
+                    
+                    # Iteration produces the correct items
+                    self.assertEqual(''.join(inner), expected)
 
 if __name__ == '__main__':
     unittest.main()
