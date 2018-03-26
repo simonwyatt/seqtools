@@ -54,7 +54,7 @@ class TestSeqSlice(unittest.TestCase):
                 # Iteration produces the correct items.
                 self.assertEqual(''.join(instance), expected)
     
-    @unittest.skip("not implemented")
+    #@unittest.skip("not implemented")
     def test_sub_slice(self):
         """
         Check that slices of SeqSlice instances are new SeqSlice instances with

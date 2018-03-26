@@ -90,8 +90,13 @@ class SeqSlice(SeqReversible):
         self._slice = slice_
         #self.i_start, self.i_stop, self._step = slice_.indices(L)
     
-    # TODO: override __new__ to return original sequence
-    # when step in (None, 1) and start in (None, 0, -L) and (stop is None or stop >= L)
+    # Future: Consider overriding __new__ to just return the base sequence without allocating a new wrapper object
+    # when using a trivial slice: step in (None, 1) and start in (None, 0, -L) and (stop is None or stop >= L)
+    # Also could do something like
+    # if isinstance(seq, SeqSliceable):
+    #   return seq[slice_]
+    # but we have to make sure that the seq type's SeqSlice subclass doesn't just recursively keep doing this
+    # without ever allocating an instance.
     
     def _baselen(self):
         try:
@@ -104,10 +109,14 @@ class SeqSlice(SeqReversible):
         return self._slice.indices(self._baselen())
     
     def len(self):
+        # TODO: Verify. Possibly amenable to simplification.
+        
+        start, stop, step = self._bounds()
+        # This normalizes start and stop to positive indices,
+        # eliminating the need to reason by cases on their signs or on whether they are None.
+        
         # Algorithm reproduced from CPython implementation of slicing for ranges.
         # See get_len_of_range in Objects/rangeobject.c of CPython
-        # TODO: Verify. Possibly amenable to simplification.
-        start, stop, step = self._bounds()
         if (step > 0 and start < stop) or (step < 0 and start > stop):
             return (abs(stop - start) - 1) // abs(step) + 1
         else:
@@ -118,38 +127,26 @@ class SeqSlice(SeqReversible):
     
     def _compose_index(self, i):
         """
-        Precondition:  `i` is an integer.
-        Postcondition: If `i` is within the bounds of `self`,
-            `self._compose_index(i)` is an integer `j` such that `self[i] = self._seq[j]`.
+        Precondition:  `i` is an integer such that `-L <= i < L`, where `L = self.len()`.
+        Postcondition:
+            `self._compose_index(i)` is one of the two integers `j` such that `self[i] = self._seq[j]`.
             The sign of `j` is determined as follows:
             For nonnegative indices `i >= 0`, computed as offsets from the start of the slice:
                 `j` is negative if `self` has a negative start, either explicitly or when start is None with a negative step,
                 and positive otherwise.
             For negative indices `i < 0`, computed as offsets from the end of the slice:
-                ...
-            If `i` is out of bounds in `self`, then `self._compose_index(i)` is outside the bounds of `self._seq`.
-                (Consequently, `self[i]` will raise IndexError if and only if `self._seq[j]` does.)
+                `j` is negative if `self` has a stop relative to the end of `self._seq`, either via an explicit negative stop
+                    or when Stop is none with a positive step,
+                and positive otherwise.
+        
+        Due to the weak precondition, the caller must do explicit bounds checking to determine whether `i`
+        is in-bounds in `self`. Out-of-bounds values of `i` may e.g. produce indices in `self._seq` which are legal indices there,
+        but go past the stop of `self`.
         """
         
-        # We will temporarily work in the world of positive indices into the base sequence,
-        # converting our answer to a negative number when necessary.
+        # We will calculate in the world of positive indices into the base sequence,
+        # explicitly converting our answer to a negative number when necessary.
         start, stop, step = self._bounds()
-        """_, _, step = self._bounds()
-        
-        start = self._slice.start
-        if start is None:
-            if step > 0:
-                start = 0
-            else:
-                start = -1
-        
-        stop = self._slice.stop
-        if stop is None:
-            L = self._baselen()
-            if step > 0:
-               stop = (start - L) % step + L
-            else:
-                stop = L - (L - start) % step"""
         
         if i >= 0:
             # Nonnegative indices are computed as offsets from the start position:
@@ -200,33 +197,76 @@ class SeqSlice(SeqReversible):
         return j
         
     def _compose_slice(self, s):
+        """
+        Precondition:  `s` is a slice object.
+        Postcondition: `self._compose_slice(s)` is a slice object `t` such that
+            `self[s]` and `self._seq[t]` are elementwise equal as sequences.
+        """
+        # THIS IS HARDER TO GET RIGHT THAN YOU THINK.
+        # Various combinations of negative indices and step sizes give rise to a lot of unintuitive corner cases.
+                
+        # Default to start, stop, step parameters of `self`, then use `s` to modify.
         start, stop, step = self._slice.start, self._slice.stop, self._slice.step
         
+        # Compose step parameter:
+        # If `s.step` is None, default to taking 1 step at a time through `self`,
+        # which is by definition `self._slice.step` steps through `self._seq`,
+        # which is what we already initialized `step` to, and we don't need to change it.
         if s.step is not None:
-            step = step * s.step if step is not None else s.step
-            
-        #if step is None or step > 0:        
+            if step is not None:
+                # Each step through `self` is equivalent to `step` steps through `self._seq`,
+                # and we're taking `s.step` steps at a time through `self`.
+                step = step * s.step
+            else:
+                # `self` was using a step of None, which is implicitly a step of 1.
+                step = s.step
+        # But note that we don't use this value to reason about the `start` or `stop` parameters;
+        # that's all based on the direction of traversal through `self` given by `s.step`.
+        
+        if s.start is not None or s.stop is not None:
+            # We will be composing the start or stop parameter.
+            # This requires bounds-checking using multiple occurrence of `self.len()`;
+            # compute and save this value once now.
+            L = self.len()
+        
+        # Compose start parameter:
         if s.start is not None:
-            start = self._compose_index(s.start)
-            """if start < 0: # Negative return value from `_compose_index` indicates start before
-                          # beginning of underlying sequence, not at index from right!
-                if step is None or step > 0: # Forward step: start at beginning.
-                    start = 0
-                else: # Reverse step: Push all the way out of bounds
-                    start -= -self._baselen"""
-            # if start >= self._baselen: Above-bounds indices handled correctly by default behavior of slicing
+            # Bounds-check the given value of `s.stop`
+            if -L <= s.start < L: # In-bounds.
+                # Use index arithmetic to obtain equivalent index into `self._seq`.
+                start = self._compose_index(s.start)
+            # If out-of-bounds, compare step direction to which boundary we're outside of and clip accordingly:
+            elif ((s.start >= L and (s.step is     None or  s.step > 0))   # Start after  back  with positive step.
+              or  (s.start < -L and (s.step is not None and s.step < 0))): # Start before front with negative step.
+                # Slice starts too late to capture any elements.
+                # Clip `start` to equal `stop`, forcing empty slice.
+                start = stop
+            # Otherwise, slice starts too early: clip `start` to `self._slice.start`,
+            # its initial value, which we don't need to change.
+        # If `s.start` is None, default behavior depends on the sign of `s.step`.
+        # If `s.step` is None or positive, this is an implied start from the start of `self`,
+        #   which is what we already initialized `start` to, and we don't need to change it.
+        elif s.step is not None and s.step < 0:
+            # This case is an implied start from the *end* of `self`, so
+            start = self._compose_index(-1)
     
+        # Compose stop parameter:
+        # If `s.stop` is None, just keep going through `self._seq` until we run off the end of `self`,
+        # which by definition is at `self._slice.stop`,
+        # which is what we already initialized `stop` to, and we don't need to change it.
         if s.stop is not None:
-            i_stop = self._compose_index(s.stop)
-            L = self._baselen()
-            if stop is not None:
-                new = i_stop % L
-                old =   stop % L
-            if (stop is None
-                    or ((step is None or step > 0) and new < old)
-                    or ((step is not None and step < 0) and new > old)
-               ):
-                stop = i_stop
+            # Bounds-check the given value of `s.stop`:
+            if -L <= s.stop < L: # The given `s.stop` actually lies within `self`.
+                # Use index arithmetic to obtain equivalent index into `self._seq`.
+                stop = self._compose_index(s.stop)
+            # If out-of-bounds, compare step direction to which boundary we're outside of and clip accordingly:
+            elif ((s.stop < -L and (s.step is     None or  s.step > 0))   # Stop before front with positive step.
+              or  (s.stop >= L and (s.step is not None and s.step < 0))): # Stop after  back  with negative step.
+                # Slice stops too early to capture any elements.
+                # Clip `stop` to equal `start`, forcing an empty slice.
+                stop = start
+            # Otherwise, slice stops too late: clip `stop` to `self._slice.stop`,
+            # its initial value, which we don't need to change.
         
         return slice(start, stop, step)
     
@@ -234,45 +274,19 @@ class SeqSlice(SeqReversible):
         """
         Return `self[index]`.
         """
-        if isinstance(index, slice): # Compose slices.
-            if False:
-                # Compute start position of composed slice:
-                if self.slice.start is None and index.start is None:
-                    # Neither composed slice wishes to override the default start position
-                    # corresponding to the computed step size.
-                    start = None
-                else:
-                    # Start at what index into this slice?
-                    istart = index.start or (0 if index.step > 0 else self.len() - 1)
-                    # If none given, default to end corresponding to given step size.
-                    # The corresponding index 
-                    start = self._compose_index( istart )
-                
-                if index.stop is not None:
-                    stop = self._compose_index ( index.stop )
-                else:
-                    stop = self.slice.stop
-            
-                if self.slice.step is None and index.step is None:
-                    step = None
-                else:
-                    step  = self._step  * (index.step or 1)
-            
-                return type(self)(self.seq, slice(start, stop, step)) # Cooperate with subclasses.
+        if isinstance(index, slice):
             return type(self)(self._seq, self._compose_slice(index))
         else:
+            # Check bounds before attempting index arithmetic; precondition of _compose_index requires this to happen here
             L = self.len()
             if not (-L <= index < L):
                 raise IndexError("SeqSlice index out of range")
+            
             return self._seq[self._compose_index(index)]
         # TODO: correctness arguments for all methods here, but especially this one!
     
     def _seqtools_reversed(self):
         return self[::-1]
-        #start = start + (self.len() - 1) * self.slice.step
-        #stop = start - self.slice.step
-        #step = -self.slice.step
-        #return type(self)(self.seq, slice(start, stop, step))
     
     def __repr__(self):
         (start, stop, step) = (str(i) if i is not None else "" for i in (self._slice.start, self._slice.stop, self._slice.step))
