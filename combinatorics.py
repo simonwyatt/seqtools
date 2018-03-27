@@ -62,13 +62,32 @@ class Product(SeqReversible):
         [()]
     """
     
-    """
-    Abstraction function: the tuple (s1, ..., sn) represents the Cartesian product of the sequences s1, ..., sn.
-    Representation invariant: The sequences s1, ..., sn are immutable.
-    """
+    # Abstraction function: the tuple (s1, ..., sn) represents the Cartesian product of the sequences s1, ..., sn.
+    # Representation invariant: The sequences s1, ..., sn are immutable.
+    
+    ################
+    # Construction #
+    ################
+    
     def __init__(self, *sequences, repeat=1):
         self._sequences = sequences * repeat
+        
+    def _seqtools_reversed(self):
+        return Product(*(Reversed(s) for s in self._sequences))
     
+    def __repr__(self):
+        return type(self).__name__ + "(" + ", ".join(repr(s) for s in self._sequences) + ")"
+    
+    def __eq__(self, other):
+        if isinstance(other, Product):
+            return self._sequences == other._sequences
+        else:
+            return NotImplemented
+
+    ##########
+    # Length #
+    ##########
+
     def len(self):
         """Compute length, avoiding CPython's implementation constraint that the return value of `__len__` may not exceed `sys.maxsize`."""
         """
@@ -91,6 +110,80 @@ class Product(SeqReversible):
     
     def __len__(self):
         return self.len()
+    
+    ###############
+    # Item access #
+    ###############
+    
+    def __getitem__(self, index):
+        """
+        Return `self[index]`.
+        """
+        # Correctness: By division into cases:
+        if isinstance(index, slice):
+            return _ProductSlice(self, index) # See correctness argument in slice class
+            # Future: Consider algebraic optimizations:
+            # detect when step size divides length of last factor and return product object over smaller factor
+            # if len(self._sequences[-1]) % index.step == 0: ...
+            # & similar cases.
+        else:
+            # Bounds check
+            L = self.len()
+            if not (-L <= index < L):
+                raise IndexError("Product index out of range")
+                #if we didn't do this explicitly, the following would return `self[index % L]`
+            
+            return self._elem_at(self._multi_index(index))
+            # Correctness argument:
+            # _multi_index is specified to return a tuple such that
+            # the action specified by _elem_at returns the desired item.
+    
+    def _multi_index(self, i):
+        """
+        Compute indices into each factor corresponding to index in product.
+        
+        Precondition : `i` is an integer.
+        Postcondition: Let `self` be the product `Product(s[0], ..., s[n-1])` of `n` sequences.
+        Then `self._multi_index(i)` is the tuple `(i[0], ..., i[n-1])` with the property that
+        `(s[0][i[0]], ..., s[n-1][i[n-1]]) = self[i % len(self)]`.
+        """
+        indices = ()
+        for s in self._sequences[::-1]:
+            i, j = divmod(i, len(s))
+            indices = (j,) + indices
+        return indices
+        # Correctness argument:
+        # PENDING. Inductive. On number of factors? On i?
+        
+    def _elem_at(self, indices):
+        """
+        Get one element from each factor using tuple of indices.
+        
+        Precondition : `indices` is a sequence `(i[0], ..., i[n-1])` of `n` integers,
+            where `self` is the product `Product(s[0], ..., s[n-1])` of `n` sequences.
+        Postcondition: `self._elem_at(indices)` is the tuple `(s[0][i[0]], ..., s[n-1][i[n-1]])`.
+        """
+        return tuple(s[indices[i]] for i, s in enumerate(self._sequences))
+        # Correctness argument: (s[indices[i]] for i, s in enumerate(self._sequences))
+        # is equivalent to (self._sequences[i][indices[i]] for i in range(len(self._sequences))),
+        # which is a generator expression for the sequence of values required by the postcondition.
+    
+    
+    
+    #############
+    # Iteration #
+    #############
+    
+    def __iter__(self):
+        return itertools.product(*self._sequences) #CPython implements this in C
+        # Alternatively:
+        # return iter(self[::])
+    def __reversed__(self):
+        return iter(self[::-1])
+    
+    ##########
+    # Search #
+    ##########
     
     def __contains__(self, item):
         """Return `item in self`.
@@ -128,75 +221,11 @@ class Product(SeqReversible):
         #   raise TypeError("'in <{}>' requires tuple as left operand, not {}".format(type(self), type(item)))
         # otherwise catch TypeErrors where an element of `item` is incompatible with the corresponding factor and return False
     
-    def _multi_index(self, i):
-        """
-        Compute indices into each factor corresponding to index in product.
-        
-        Precondition : `i` is an integer.
-        Postcondition: Let `self` be the product `Product(s[0], ..., s[n-1])` of `n` sequences.
-        Then `self._multi_index(i)` is the tuple `(i[0], ..., i[n-1])` with the property that
-        `(s[0][i[0]], ..., s[n-1][i[n-1]]) = self[i % len(self)]`.
-        """
-        indices = ()
-        for s in self._sequences[::-1]:
-            i, j = divmod(i, len(s))
-            indices = (j,) + indices
-        return indices
-        # Correctness argument:
-        # PENDING. Inductive. On number of factors? On i?
-        
-    def _elem_at(self, indices):
-        """
-        Get one element from each factor using tuple of indices.
-        
-        Precondition : `indices` is a sequence `(i[0], ..., i[n-1])` of `n` integers,
-            where `self` is the product `Product(s[0], ..., s[n-1])` of `n` sequences.
-        Postcondition: `self._elem_at(indices)` is the tuple `(s[0][i[0]], ..., s[n-1][i[n-1]])`.
-        """
-        return tuple(s[indices[i]] for i, s in enumerate(self._sequences))
-        # Correctness argument: (s[indices[i]] for i, s in enumerate(self._sequences))
-        # is equivalent to (self._sequences[i][indices[i]] for i in range(len(self._sequences))),
-        # which is a generator expression for the sequence of values required by the postcondition.
+    def index(self, item):
+        raise NotImplementedError
     
-    def __getitem__(self, index):
-        """
-        
-        """
-        if isinstance(index, slice):
-            return _ProductSlice(self, index)
-            # Future: Consider algebraic optimizations:
-            # detect when step size divides length of last factor and return product object over smaller factor
-            # if len(self._sequences[-1]) % index.step == 0: ...
-            # & similar cases.
-        else:
-            L = self.len()
-            if not (-L <= index < L):
-                raise IndexError("Product index out of range")
-                #if we didn't do this explicitly, the following would return `self[index % L]`
-            #else
-            return self._elem_at(self._multi_index(index))
-        # Correctness argument: PENDING
-    
-    def __iter__(self):
-        return itertools.product(*self._sequences) #CPython implements this in C
-        # Alternatively:
-        # return iter(self[::])
-    
-    def __reversed__(self):
-        return iter(self[::-1])
-    def _seqtools_reversed(self):
-        return Product(*(Reversed(s) for s in self._sequences))
-    
-    def __repr__(self):
-        return type(self).__name__ + "(" + ", ".join(repr(s) for s in self._sequences) + ")"
-    
-    def __eq__(self, other):
-        if isinstance(other, Product):
-            return self._sequences == other._sequences
-        else:
-            return NotImplemented
-    
-    #TODO: index, count
+    def count(self, item):
+        raise NotImplementedError
 
 class _ProductSlice(SeqSlice):
     def __iter__(self):
