@@ -164,7 +164,8 @@ class Product(SeqReversible):
         """
         if isinstance(index, slice):
             return _ProductSlice(self, index)
-            # TODO: detect when step size divides length of last factor and return product object over smaller factor
+            # Future: Consider algebraic optimizations:
+            # detect when step size divides length of last factor and return product object over smaller factor
             # if len(self._sequences[-1]) % index.step == 0: ...
             # & similar cases.
         else:
@@ -199,9 +200,6 @@ class Product(SeqReversible):
 
 class _ProductSlice(SeqSlice):
     def __iter__(self):
-        if self._seq._sequences == (): #Special case for product of empty sequence of sequences.
-            yield ()
-            return
     
         ###############################
         # Initialize generator state: #
@@ -222,7 +220,7 @@ class _ProductSlice(SeqSlice):
         else:
             if ((start >= L and step > 0)
             or  (start < -L and step < 0)):
-                # Start too late to capture any items.
+                # Started too late to capture any items.
                 return
             elif start >= L and step < 0:
                 # Clip to back.
@@ -230,6 +228,11 @@ class _ProductSlice(SeqSlice):
             elif start < -L and step > 0:
                 # Clip to front
                 start = -L
+        
+        if self._seq._sequences == (): # Special case for product of empty sequence of sequences:
+                                       # If we've gotten this far, capture the one item there and stop.
+            yield ()
+            return
         
         # Initialize stop: None is okay, handled explicitly by generator. Convert to multi-index.
         if stop is not None:
@@ -261,8 +264,6 @@ class _ProductSlice(SeqSlice):
         
         # Correctness argument:
         # PENDING. Most complex and most important method for products, will have most complex & important proof.
-        # CURRENTLY KNOWN BUGGY. stop element is included!
-        #   believed to be off by one error in the loop
 
 if __name__ == "__main__":
     import doctest

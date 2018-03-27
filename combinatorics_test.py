@@ -65,24 +65,61 @@ class TestProduct(unittest.TestCase):
                     P[index]
                     
     def test_slicing(self):
-        ABC3 = self._testSubjects[4]
-        reference = tuple(itertools.product("ABC", repeat=3))
-        
-        startstops = (None, 3, -3, 6, -6, 20, -20, 99, -99)
+        factor_sets = (
+            ("ABC", "ABC", "ABC"),
+            (range(3), range(4), range(3)),
+            ("ABCD", (False, True), range(11))
+        )
+        startstops = (None, 0, -1, 3, -3, 6, -6, 20, -20, 99, -99)
         steps = (None, 1, -1, 3, -3, 99, -99)
+        
+        for factors in factor_sets:
+            product   = Product(*factors)
+            reference = tuple(itertools.product(*factors))        
+            for sliceargs in itertools.product(startstops, startstops, steps):
+                index = slice(*sliceargs)
+            
+                sliceobj =   product[index]
+                expected = reference[index]
+            
+                with self.subTest(factors=factors, index=index):
+                    # Length matches.
+                    self.assertEqual(len(sliceobj), len(expected))
+                
+                    # Items equal at in-bounds indices.
+                    for i in range(-len(expected), len(expected)):
+                        with self.subTest(pos=i):
+                            self.assertEqual(sliceobj[i], expected[i])
+                
+                    # Boundaries at expected locations.
+                    for bad_i in (-len(expected) - 1, len(expected)):
+                        with self.subTest(pos = bad_i):
+                            with self.assertRaises(IndexError):
+                                sliceobj[bad_i]
+                
+                    # Iteration produces expected items.
+                    for (i, (x, y)) in enumerate(zip(sliceobj, expected)):
+                        with self.subTest(pos=i):
+                            self.assertEqual(x, y)
+    
+    def test_empty_product(self):
+        startstops = (None, 0, -1, 5, -5)
+        steps = (None, 2, -1)
+        
+        product = Product()
+        reference = ((),)
+        
         for sliceargs in itertools.product(startstops, startstops, steps):
             index = slice(*sliceargs)
-            
-            sliceobj = ABC3[index]
+            sliceobj =   product[index]
             expected = reference[index]
-            
             with self.subTest(index=index):
                 # Length matches.
                 self.assertEqual(len(sliceobj), len(expected))
                 
-                # Items equal at in-bounds indices.
-                for i in range(-len(expected), len(expected)):
-                    with self.subTest(pos=i):
+                # If there's an item, check that it's retrieved as expected
+                if len(expected) > 0:
+                    for i in (0, -1):
                         self.assertEqual(sliceobj[i], expected[i])
                 
                 # Boundaries at expected locations.
@@ -90,12 +127,6 @@ class TestProduct(unittest.TestCase):
                     with self.subTest(pos = bad_i):
                         with self.assertRaises(IndexError):
                             sliceobj[bad_i]
-                
-                # Iteration produces expected items.
-                for (i, (x, y)) in enumerate(zip(sliceobj, expected)):
-                    with self.subTest(pos=i):
-                        self.assertEqual(x, y)
-            
         
 
 if __name__ == '__main__':
