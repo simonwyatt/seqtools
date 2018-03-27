@@ -32,6 +32,7 @@ class TestSeqSlice(unittest.TestCase):
         Check that SeqSlice instances produce the correct items,
         by comparison to ordinary explicit slices.
         """
+        # Coverage: __init__, len, __len, __getitem__ (single item branch), internals e.g. _compose_index
         for sliceargs in itertools.product(self.startstops, self.startstops, self.steps):
             index = slice(*sliceargs)
             instance = SeqSlice(ascii_lowercase, index)
@@ -59,6 +60,8 @@ class TestSeqSlice(unittest.TestCase):
         Check that slices of SeqSlice instances are new SeqSlice instances with
         correctly computed slice parameters.
         """
+        # Coverage: Principally __getitem__ (slice branch), _compose_slice
+        
         # Start & stop positions for outer slices.
         starts_o = (None, 2, 10, -23, -15)
         stops_o  = (None, 6, 14, -19,  -6)
@@ -104,6 +107,11 @@ class TestSeqSlice(unittest.TestCase):
                     
                     # Iteration produces the correct items
                     self.assertEqual(''.join(inner), expected)
+    
+    ########################################################
+    # Iteration, searching: Correctness implied by that of #
+    # __len__, __getitem__, and collections.abc.Sequence   #
+    ########################################################
 
 if __name__ == '__main__':
     unittest.main()

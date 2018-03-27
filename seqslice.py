@@ -83,15 +83,10 @@ class SeqSlice(SeqReversible):
         >>> ascii_lowercase[::-3][::2], ascii_lowercase[::-3][1::2]
         ('ztnhb', 'wqke')
     """
-    def __init__(self, seq, slice_):
-        self._seq = seq
-        #try:
-        #    L = seq.len()
-        #except AttributeError:
-        #    L = len(seq)
-        #self._baselen = L
-        self._slice = slice_
-        #self.i_start, self.i_stop, self._step = slice_.indices(L)
+    
+    ################
+    # Construction #
+    ################
     
     # Future: Consider overriding __new__ to just return the base sequence without allocating a new wrapper object
     # when using a trivial slice: step in (None, 1) and start in (None, 0, -L) and (stop is None or stop >= L)
@@ -99,9 +94,24 @@ class SeqSlice(SeqReversible):
     # if cls is SeqSlice and isinstance(seq, SeqSliceable):
     #   return seq[slice_]
     # where the first part of the condition is to stop an infinite recursion when this __new__ is
-    # inherited by the subclasses.
-
+    # inherited by the subclasses. This would force classes with their own specialized SeqSlice subclasses
+    # to always produce that subclass, even when passed directly to the base class constructor.
     
+    def __init__(self, seq, slice_):
+        self._seq = seq
+        self._slice = slice_
+    
+    def _seqtools_reversed(self):
+        return self[::-1]
+    
+    def __repr__(self):
+        (start, stop, step) = (str(i) if i is not None else "" for i in (self._slice.start, self._slice.stop, self._slice.step))
+        return "<{} {}[{}:{}:{}]>".format(type(self).__name__, repr(self._seq), start, stop, step)
+    
+    ##########
+    # Length #
+    ##########
+
     def _baselen(self):
         try:
             L = self._seq.len()
@@ -128,6 +138,33 @@ class SeqSlice(SeqReversible):
         
     def __len__(self):
         return self.len()
+        
+    ##############################
+    # Item access / subslicing:  #
+    # The real point of all this #
+    ##############################
+    
+    def __getitem__(self, index):
+        """
+        Return `self[index]`.
+        """
+        if isinstance(index, slice):
+            try:
+                subslice = self._compose_slice(index)
+            except EmptySubsliceException:
+                try:
+                    return type(self._seq)() # Empty instance of e.g. tuples, lists, strings.
+                except TypeError: 
+                    return () # Fall back on returning empty tuple, but may violate type assumptions.
+            else:
+                return type(self)(self._seq, subslice)
+        else:
+            # Check bounds before attempting index arithmetic; precondition of _compose_index requires this to happen here
+            L = self.len()
+            if not (-L <= index < L):
+                raise IndexError("SeqSlice index out of range")
+            
+            return self._seq[self._compose_index(index)]
     
     def _compose_index(self, i):
         """
@@ -230,12 +267,10 @@ class SeqSlice(SeqReversible):
         # But note that we don't use this value to reason about the `start` or `stop` parameters;
         # that's all based on the direction of traversal through `self` given by `s.step`.
         
+        # Calculate values used to reason about how the start & stop should be computed:
         if s.start is not None or s.stop is not None:
-            # We will be composing the start or stop parameter.
-            # This requires bounds-checking using multiple occurrence of `self.len()`;
-            # compute and save this value once now.
             L = self.len()
-        reversed_ = s.step is not None and s.step < 0 # We will use this to reason about how the start & stop should be computed
+        reversed_ = s.step is not None and s.step < 0 # Is there a negative step?
         
         # Compose start parameter:
         clipping_start_to_old_stop = False
@@ -264,7 +299,7 @@ class SeqSlice(SeqReversible):
             # This case is an implied start from the *end* of `self`, so
             clipping_start_to_old_stop = True
         # If `s.step` is None or positive, this is an implied start from the start of `self`,
-        #   which is what we already initialized `start` to, and we don't need to change it.
+        # which is what we already initialized `start` to, and we don't need to change it.
         
         # Follow up on cases flagged for start from old stop:
         if clipping_start_to_old_stop:
@@ -307,38 +342,15 @@ class SeqSlice(SeqReversible):
             else:
                 # The old start still needs to be included, so stop one index past it,
                 # where "past" is relative to the step direction.
-                stop = self._slice.start + (1 if step>0 else -1)
+                stop = self._slice.start + (1 if step > 0 else -1)
         
         return slice(start, stop, step)
     
-    def __getitem__(self, index):
-        """
-        Return `self[index]`.
-        """
-        if isinstance(index, slice):
-            try:
-                subslice = self._compose_slice(index)
-            except EmptySubsliceException:
-                try:
-                    return type(self._seq)() # Empty instance of tuples, lists, strings.
-                except TypeError: 
-                    return () # Fall back on returning empty tuple, but may violate type assumptions.
-            else:
-                return type(self)(self._seq, subslice)
-        else:
-            # Check bounds before attempting index arithmetic; precondition of _compose_index requires this to happen here
-            L = self.len()
-            if not (-L <= index < L):
-                raise IndexError("SeqSlice index out of range")
-            
-            return self._seq[self._compose_index(index)]
-    
-    def _seqtools_reversed(self):
-        return self[::-1]
-    
-    def __repr__(self):
-        (start, stop, step) = (str(i) if i is not None else "" for i in (self._slice.start, self._slice.stop, self._slice.step))
-        return "<{} {}[{}:{}:{}]>".format(type(self).__name__, repr(self._seq), start, stop, step)
+    #########################################
+    # Iteration, searching:                 #
+    # Inherit from collections.abc.Sequence #
+    #########################################
+
 
 if __name__ == "__main__":
     import doctest
