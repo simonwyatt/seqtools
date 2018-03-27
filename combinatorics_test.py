@@ -16,20 +16,21 @@
 # this program. If not, see <http://www.gnu.org/licenses/>.                      #
 ##################################################################################
 
-"""Unit tests for the `combinatorics` module using the built-in `unittest` module."""
+"""Unit tests for the `combinatorics` module.."""
 
-import unittest
-import combinatorics
+import unittest, itertools
+#import combinatorics
+from combinatorics import Product
 
 class TestProduct(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        empty   = combinatorics.Product()
-        singles = combinatorics.Product((1,), (2,), (3,), (4,))
-        A0      = combinatorics.Product("ABC", (0,1))
-        B3      = combinatorics.Product(range(2), repeat=3)
-        ABC3    = combinatorics.Product("ABC", repeat=3)
-        huge    = combinatorics.Product(range(10**6), repeat=10)
+        empty   = Product()
+        singles = Product((1,), (2,), (3,), (4,))
+        A0      = Product("ABC", (0,1))
+        B3      = Product(range(2), repeat=3)
+        ABC3    = Product("ABC", repeat=3)
+        huge    = Product(range(10**6), repeat=10)
         cls._testSubjects = (empty, singles, A0, B3, ABC3, huge)
     
     def test_len(self):
@@ -62,6 +63,39 @@ class TestProduct(unittest.TestCase):
             with self.subTest(P=P, index=index):
                 with self.assertRaises(IndexError):
                     P[index]
+                    
+    def test_slicing(self):
+        ABC3 = self._testSubjects[4]
+        reference = tuple(itertools.product("ABC", repeat=3))
+        
+        startstops = (None, 3, -3, 6, -6, 20, -20, 99, -99)
+        steps = (None, 1, -1, 3, -3, 99, -99)
+        for sliceargs in itertools.product(startstops, startstops, steps):
+            index = slice(*sliceargs)
+            
+            sliceobj = ABC3[index]
+            expected = reference[index]
+            
+            with self.subTest(index=index):
+                # Length matches.
+                self.assertEqual(len(sliceobj), len(expected))
+                
+                # Items equal at in-bounds indices.
+                for i in range(-len(expected), len(expected)):
+                    with self.subTest(pos=i):
+                        self.assertEqual(sliceobj[i], expected[i])
+                
+                # Boundaries at expected locations.
+                for bad_i in (-len(expected) - 1, len(expected)):
+                    with self.subTest(pos = bad_i):
+                        with self.assertRaises(IndexError):
+                            sliceobj[bad_i]
+                
+                # Iteration produces expected items.
+                for (i, (x, y)) in enumerate(zip(sliceobj, expected)):
+                    with self.subTest(pos=i):
+                        self.assertEqual(x, y)
+            
         
 
 if __name__ == '__main__':

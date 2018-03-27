@@ -195,53 +195,74 @@ class Product(SeqReversible):
         else:
             return NotImplemented
     
-    #TODO: index searching
+    #TODO: index, count
 
 class _ProductSlice(SeqSlice):
     def __iter__(self):
-        if self.seq._sequences == (): #Special case for product of empty sequence of sequences.
+        if self._seq._sequences == (): #Special case for product of empty sequence of sequences.
             yield ()
             return
     
-        start, stop, step = self.slice.start, self.slice.stop, self.slice.step
-    
-        #Initialize generator state.
+        ###############################
+        # Initialize generator state: #
+        ###############################
+        
+        start, stop, step = self._slice.start, self._slice.stop, self._slice.step
+        
+        # Initialize step: Normalize by rejecting zero and defaulting None -> 1
         if step == 0:
             raise ValueError("slice step cannot be zero")
         if step is None:
             step = 1
-        
+
+        # Initialize start: Normalize by clipping to bounds, handling None
+        L = self._baselen() # Precompute base length for repeated reuse
         if start is None:
             start = 0 if step>0 else -1
-        elif start >= self.len():
-            return
-        indices = list( self.seq._multi_index(start) )
-        item = list(self.seq._elem_at(indices))
+        else:
+            if ((start >= L and step > 0)
+            or  (start < -L and step < 0)):
+                # Start too late to capture any items.
+                return
+            elif start >= L and step < 0:
+                # Clip to back.
+                start = L - 1
+            elif start < -L and step > 0:
+                # Clip to front
+                start = -L
         
+        # Initialize stop: None is okay, handled explicitly by generator. Convert to multi-index.
         if stop is not None:
-            stop = list(self.seq._multi_index(stop)) # We won't mutate `stop`, but it has to be comparable to the mutable `indices`.
+            stop = list(self._seq._multi_index(stop)) # We won't mutate `stop`, but it has to be comparable to the mutable `indices`.
+            
+        ###################
+        # Generate items. #
+        ###################
         
-        #Generate items.
+        indices = list( self._seq._multi_index(start) )
+        item = list(self._seq._elem_at(indices))
         yield tuple(item) #The first one.
-        while stop is None or (step>0 and indices < stop) or (step<0 and stop < indices): #If stop is None we'll explicitly break when done.
+        while stop is None or (step > 0 and indices < stop) or (step < 0 and stop < indices): # If stop is None we'll explicitly break when done.
             indices[-1] += step
-            pos = len(self.seq._sequences) - 1
-            #Carry overflows back through multi-index, updating item as we go.
-            #We only update the entries of the item that need updating, instead of regenerating the entire item tuple when any part of the index changes.
-            while pos > 0 and not (0 <= indices[pos] < len(self.seq._sequences[pos])):
-                q, indices[pos] = divmod(indices[pos], len(self.seq._sequences[pos]))
+            pos = len(self._seq._sequences) - 1
+            # Propagate carries back through multi-index, updating item as we go.
+            # We only update the entries of the item that need updating, instead of regenerating the entire item tuple when any part of the index changes,
+            # which is our principal efficiency gain over iteration by direct access to a range of individual elements.
+            while pos > 0 and not (0 <= indices[pos] < len(self._seq._sequences[pos])):
+                q, indices[pos] = divmod(indices[pos], len(self._seq._sequences[pos]))
                 indices[pos - 1] += q
-                item[pos] = self.seq._sequences[pos][indices[pos]]
+                item[pos] = self._seq._sequences[pos][indices[pos]]
                 pos -= 1
-            if pos == 0 and not (0 <= indices[pos] < len(self.seq._sequences[pos])): #Ran off end of product.
-                break
-            #else
-            item[pos] = self.seq._sequences[pos][indices[pos]] #One more time for last carry.
+            if pos == 0 and not (0 <= indices[pos] < len(self._seq._sequences[pos])): #Ran off end of product.
+                break # Here's the explicit break for if stop was None.
+            # else
+            item[pos] = self._seq._sequences[pos][indices[pos]] # One more time for last carry.
             yield tuple(item)
         
         # Correctness argument:
         # PENDING. Most complex and most important method for products, will have most complex & important proof.
         # CURRENTLY KNOWN BUGGY. stop element is included!
+        #   believed to be off by one error in the loop
 
 if __name__ == "__main__":
     import doctest
