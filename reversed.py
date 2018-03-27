@@ -69,6 +69,11 @@ class Reversed(SeqReversible):
         >>> Reversed(Reversed('abcdefghij'))
         'abcdefghij'
     """
+    
+    ##############################################################################
+    # Construction. Instance creation can be delegated to SeqReversible classes. #
+    ##############################################################################
+    
     def __new__(cls, seq):
         """
         Create a reversed sequence.
@@ -85,7 +90,7 @@ class Reversed(SeqReversible):
         # If given sequence is naturally reversible to some sequence of the same type,
         # return that instead of creating a Reversed object
         if isinstance(seq, range):
-            return seq[::-1] #ranges do the right thing by default
+            return seq[::-1] # Ranges do the right thing out of the box.
         elif isinstance(seq, SeqReversible):
             return seq._seqtools_reversed()
         else:
@@ -100,6 +105,42 @@ class Reversed(SeqReversible):
         Representation invariant: 
         """
         self._seq = seq
+    
+    def __repr__(self):
+        return "Reversed({})".format(repr(self._seq))
+    
+    #####################################
+    # Length: Invariant under reversal. #
+    #####################################
+    
+    def len(self):
+        try: # use overflow-safe len method if available,
+            return self._seq.len()
+        except AttributeError: # else fall back on builtin len
+            return len(self._seq) # still could raise OverflowError if `self._seq` is huge but not of a type supporting overflow-safe len
+    def __len__(self):
+        return len(self._seq) # if overflows, may as well do it right away instead of waiting til this returns
+    
+    #################################################################
+    # Item access: Delegated to base sequence via index arithmetic. #
+    #################################################################
+    
+    def __getitem__(self, index):
+        """
+        Compute self[index].
+        
+        Precondition:  `index` is an integer (-self.len() <= index < self.len) or slice object.
+        Postcondition: `self[index]` is the item that would be obtained by `self._seq[index]`
+            if `self._seq` was indexed in reversed order, i.e.
+            self[index] == self._seq[::-1][index].
+        """
+        # Correctness argument: By division into cases.
+        # Each of the functions `_revslice` and `_revindex` specify that they return the correct index
+        # to obtain the desired results by subscripting `self._seq`.
+        if isinstance(index, slice):
+            return self._seq[self._revslice(index)]
+        else:
+            return self._seq[self._revindex(index)]
     
     def _revindex(self, i):
         """
@@ -146,24 +187,30 @@ class Reversed(SeqReversible):
         # So `start`, `stop`, `step` are all now correct to slice `self._seq` in the correct way.
         return slice(start, stop, step)
     
-    # Subscripting and searching: delegate to base sequence via index arithmetic.
-    def __getitem__(self, index):
-        """
-        Compute self[index].
-        
-        Precondition:  `index` is an integer (-self.len() <= index < self.len) or slice object.
-        Postcondition: `self[index]` is the item that would be obtained by `self._seq[index]`
-            if `self._seq` was indexed in reversed order, i.e.
-            self[index] == self._seq[::-1][index].
-        """
-        # Correctness argument: By division into cases.
-        # Each of the functions `_revslice` and `_revindex` specify that they return the correct index
-        # to obtain the desired results by subscripting `self._seq`.
-        if isinstance(index, slice):
-            return self._seq[self._revslice(index)]
-        else:
-            return self._seq[self._revindex(index)]
+    def _seqtools_reversed(self):
+        """Reverse a `Reversed` instance by extracting its underlying sequence."""
+        return self._seq
     
+    ##################################################################
+    # Iteration: Delegated to base sequence with order interchanged. #
+    ##################################################################
+    
+    def __iter__(self):
+        return reversed(self._seq)
+    def __reversed__(self):
+        return iter(self._seq)
+    
+    ##########
+    # Search #
+    ##########
+    
+    # Containment testing: Invariant under reversal.
+    def __contains__(self, item):
+        return item in self._seq
+        # Correctness argument: `Reversed(seq)` must contain precisely the same
+        #     elements as `seq` to satisfy the specification of `Reversed`.
+    
+    # Item search: mediated by index reversal.
     def index(self, item, start=0, stop=None):
         """
         Return the least positive integer `i` such that `self[i] == item`
@@ -202,38 +249,12 @@ class Reversed(SeqReversible):
             # Correctness follows from correctness of __getitem__
             super().index(item, start, stop)
         
-    # Membership testing & counting: Invariant under reversal.
-    def __contains__(self, item):
-        return item in self._seq
-        # Correctness argument: `Reversed(seq)` must contain precisely the same
-        #     elements as `seq` to satisfy the specification of `Reversed`.
+    # Counting: Invariant under reversal.
     def count(self, item):
         return self._seq.count(item)
         # Correctness argument: Per spec of `Reversed`,
         # number of occurrences of `item` in `Reversed(seq)` must equal that in `seq`.
     
-    # Length: Invariant under reversal.
-    def __len__(self):
-        return len(self._seq)
-    def len(self):
-        try: #use overflow-safe len method if available,
-            return self._seq.len()
-        except AttributeError: #else fall back on builtin len
-            return len(self._seq) #still could raise OverflowError if `self._seq` is huge but not of a type supporting overflow-safe len
-    
-    # Iteration: delegate to the base sequence with order interchanged.
-    def __iter__(self):
-        return reversed(self._seq)
-    def __reversed__(self):
-        return iter(self._seq)
-    
-    def _seqtools_reversed(self):
-        """Reverse a `Reversed` instance by extracting its underlying sequence."""
-        return self._seq
-    
-    def __repr__(self):
-        return "Reversed({})".format(repr(self._seq))
-
 if __name__ == "__main__":
     import doctest
     doctest.testmod()

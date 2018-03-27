@@ -200,7 +200,6 @@ class Product(SeqReversible):
 
 class _ProductSlice(SeqSlice):
     def __iter__(self):
-    
         ###############################
         # Initialize generator state: #
         ###############################
