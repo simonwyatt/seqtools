@@ -82,8 +82,12 @@ class Product(SeqReversible):
         self._sequences = tuple( (s if not isinstance(s, str) else tuple(s)) for s in sequences ) * repeat
         
     def _seqtools_reversed(self):
-        # The order on the product is reversed by distributing the reversal over the orders of the factors.
-        return Product(*(Reversed(s) for s in self._sequences))
+        return self[::-1]
+        # Equivalently: The order on the product is reversed by distributing the reversal over the orders of the factors:
+        # return Product(*(Reversed(s) for s in self._sequences))
+        # But this potentially allocates len(self._sequences) `Reversed` instances, passing every subscript through as many
+        # index-reversal mappings, whereas the `self[::-1]` implementation just allocates one slice instance, and passes
+        # subscripts through just one (more complex) slice-index mapping.
     
     def __repr__(self):
         return type(self).__name__ + "(" + ", ".join(repr(s) for s in self._sequences) + ")"

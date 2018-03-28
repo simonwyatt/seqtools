@@ -21,6 +21,7 @@
 import unittest, itertools
 #import combinatorics
 from combinatorics import Product
+from reversed import Reversed
 
 class TestProduct(unittest.TestCase):
     @classmethod
@@ -33,6 +34,76 @@ class TestProduct(unittest.TestCase):
         huge    = Product(range(10**6), repeat=10)
         cls._testSubjects = (empty, singles, A0, B3, ABC3, huge)
     
+    ################
+    # Construction #
+    ################
+    
+    def test_Reversed(self):
+        empty, single, A0, B3, ABC3 = self._testSubjects[:5]
+        params = (
+            ( (), {} ),
+            ( ((1,), (2,), (3,), (4,)), {} ),
+            ( ("ABC", range(3), (False, True)), {}            ),
+            ( ((0, 1),),                        {'repeat': 3} )
+        )
+        
+        for args, kwargs in params:
+            with self.subTest(args=args, kwargs=kwargs):
+                instance  = Reversed(Product(*args, **kwargs))
+                reference = tuple(itertools.product(*args, **kwargs))[::-1]
+                
+                # Length matches.
+                self.assertEqual(len(instance), len(reference))
+                
+                # Items match, if any
+                for i in range(-len(reference), len(reference)):
+                    with self.subTest(pos = i):
+                        self.assertEqual(instance[i], reference[i])
+                
+                # Boundaries match.
+                for bad_i in (-len(reference) - 1, len(reference)):
+                    with self.subTest(pos = bad_i):
+                        with self.assertRaises(IndexError):
+                            instance[bad_i]
+                
+                # Iteration produces same items.
+                for (i, (got, expected)) in enumerate(zip(instance, reference)):
+                    with self.subTest(pos = i):
+                        self.assertEqual(got, expected)
+                # We don't need the `itertools.zip_longest( ... , fillvalue=object())` idiom here
+                # because we've already asserted that the lengths are equal.
+                
+    
+    def test_empty_product(self):
+        startstops = (None, 0, -1, 5, -5)
+        steps = (None, 2, -1)
+        
+        product = Product()
+        reference = ((),)
+        
+        for sliceargs in itertools.product(startstops, startstops, steps):
+            index = slice(*sliceargs)
+            sliceobj =   product[index]
+            expected = reference[index]
+            with self.subTest(index=index):
+                # Length matches.
+                self.assertEqual(len(sliceobj), len(expected))
+                
+                # If there's an item, check that it's retrieved as expected
+                if len(expected) > 0:
+                    for i in (0, -1):
+                        self.assertEqual(sliceobj[i], expected[i])
+                
+                # Boundaries at expected locations.
+                for bad_i in (-len(expected) - 1, len(expected)):
+                    with self.subTest(pos = bad_i):
+                        with self.assertRaises(IndexError):
+                            sliceobj[bad_i]
+    
+    ##########
+    # Length #
+    ##########
+    
     def test_len(self):
         expected_lengths = (1, 1, 6, 8, 27)#, 10**60) #Too big for CPython, separated to test_len_huge
         for P, L in zip(self._testSubjects, expected_lengths):
@@ -43,7 +114,12 @@ class TestProduct(unittest.TestCase):
         huge = self._testSubjects[-1]
         self.assertEqual(huge.len(), 10**60)
     
+    ###############
+    # Item access #
+    ###############
+    
     def test_get_one_item(self):
+        """Test that Product instances produce the correct items when subscripted."""
         indices  = (0, 0, 2, -3, 26, 785979398597554673765267388740066098873495547967682668161773)
         expected = (
             (),
@@ -58,6 +134,7 @@ class TestProduct(unittest.TestCase):
                 self.assertEqual(P[index], item)
     
     def test_get_bad_item(self):
+        """Test that Product instances raise the appropriate exception given an out-of-bounds index."""
         indices  = (1, -2, 6)
         for P, index in zip(self._testSubjects, indices):
             with self.subTest(P=P, index=index):
@@ -65,6 +142,9 @@ class TestProduct(unittest.TestCase):
                     P[index]
                     
     def test_slicing(self):
+        """
+        Test that Product instances produce slice objects that behave correctly.
+        """
         factor_sets = (
             ("ABC", "ABC", "ABC"),
             (range(3), range(4), range(3)),
@@ -102,31 +182,36 @@ class TestProduct(unittest.TestCase):
                         with self.subTest(pos=i):
                             self.assertEqual(x, y)
     
-    def test_empty_product(self):
-        startstops = (None, 0, -1, 5, -5)
-        steps = (None, 2, -1)
+    #############
+    # Iteration #
+    #############
+    
+    def test_iter(self):
+        params = (
+            ( (), {} ),
+            ( ((1,), (2,), (3,), (4,)), {} ),
+            ( ("ABC", range(3), (False, True)), {}            ),
+            ( ((0, 1),),                        {'repeat': 3} )
+        )
+        sentinel = object()
         
-        product = Product()
-        reference = ((),)
-        
-        for sliceargs in itertools.product(startstops, startstops, steps):
-            index = slice(*sliceargs)
-            sliceobj =   product[index]
-            expected = reference[index]
-            with self.subTest(index=index):
-                # Length matches.
-                self.assertEqual(len(sliceobj), len(expected))
+        for args, kwargs in params:
+            with self.subTest(args=args, kwargs=kwargs):
+                instance  = Product(*args, **kwargs)
+                reference = tuple(itertools.product(*args, **kwargs))
                 
-                # If there's an item, check that it's retrieved as expected
-                if len(expected) > 0:
-                    for i in (0, -1):
-                        self.assertEqual(sliceobj[i], expected[i])
-                
-                # Boundaries at expected locations.
-                for bad_i in (-len(expected) - 1, len(expected)):
-                    with self.subTest(pos = bad_i):
-                        with self.assertRaises(IndexError):
-                            sliceobj[bad_i]
+                with self.subTest('forward'):                
+                    for got, expected in itertools.zip_longest(instance, reference, fillvalue=sentinel):
+                        self.assertEqual(got, expected)
+                with self.subTest('reverse'):
+                    for got, expected in itertools.zip_longest(reversed(instance), reversed(reference), fillvalue=sentinel):
+                        self.assertEqual(got, expected)
+    
+    ##########
+    # Search #
+    ##########
+    
+    # TO DO
         
 
 if __name__ == '__main__':
