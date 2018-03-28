@@ -40,11 +40,12 @@ from seqslice import SeqSlice
 
 class Product(SeqReversible):
     """
-    Precondition : `sequences` is an immutable sequence of immutable sequences.
+    Precondition : `sequences` is a sequence of sequences.
     Postcondition: `Product(*sequences)` is the sequence consisting of the Cartesian product of the sequences from `sequences`,
-    produced in the lexicographic order derived from the orderings of each input sequence.
+    produced in the lexicographic order derived from the orderings of each input sequence. String elements of `sequences`
+    are treated as sequences of individual characters.
     (i.e., if given the sequence "ACB" as input, the output orders "C" before "B".)
-    `Product(*sequences, repeat=n)` is the nth Cartesian power of `Product(*sequences)`.
+    If `n` is a nonnegative integer, `Product(*sequences, repeat=n)` is the nth Cartesian power of `Product(*sequences)`.
     
     Standard warning about combinatoric sequences: Providing mutable inputs and then mutating them may result in undefined behavior.
     
@@ -62,17 +63,26 @@ class Product(SeqReversible):
         [()]
     """
     
-    # Abstraction function: the tuple (s1, ..., sn) represents the Cartesian product of the sequences s1, ..., sn.
-    # Representation invariant: The sequences s1, ..., sn are immutable.
+    # Abstraction function: the tuple (t[1], ..., t[n]) represents the Cartesian product of the sequences s[1], ..., s[n],
+    #   where t[i] = { tuple(s[i]) if s[i] is a string,
+    #                { s[i]        otherwise.
+    # Representation invariant: None of the sequences t[1], ..., s[n] are strings.
+    #   See the comment on the various search methods for further discussion of why this is important.
     
     ################
     # Construction #
     ################
     
     def __init__(self, *sequences, repeat=1):
-        self._sequences = sequences * repeat
+        """
+        Initialize a new Product instance.
+        
+        Any string elements of `sequences` are first converted to tuples.
+        """
+        self._sequences = tuple( (s if not isinstance(s, str) else tuple(s)) for s in sequences ) * repeat
         
     def _seqtools_reversed(self):
+        # The order on the product is reversed by distributing the reversal over the orders of the factors.
         return Product(*(Reversed(s) for s in self._sequences))
     
     def __repr__(self):
@@ -148,7 +158,7 @@ class Product(SeqReversible):
         `(s[0][i[0]], ..., s[n-1][i[n-1]]) = self[i % len(self)]`.
         """
         indices = ()
-        for s in self._sequences[::-1]:
+        for s in reversed(self._sequences):
             i, j = divmod(i, len(s))
             indices = (j,) + indices
         return indices
@@ -168,15 +178,13 @@ class Product(SeqReversible):
         # is equivalent to (self._sequences[i][indices[i]] for i in range(len(self._sequences))),
         # which is a generator expression for the sequence of values required by the postcondition.
     
-    
-    
     #############
     # Iteration #
     #############
     
     def __iter__(self):
         return itertools.product(*self._sequences) #CPython implements this in C
-        # Alternatively:
+        # Equivalent to:
         # return iter(self[::])
     def __reversed__(self):
         return iter(self[::-1])
@@ -185,10 +193,26 @@ class Product(SeqReversible):
     # Search #
     ##########
     
+    # The correctness of the __contains__, index, and count methods, which each call
+    # the corresponding methods of the factor sequences, depends on string factors
+    # being represented by their conversions to tuples.
+    # This is because these methods of strings search for substrings, not characters,
+    # and raise ValueError when strings are searched for non-string elements.
+    # so, e.g., if `P = Product('AB', 'AB', 'AB')` then we must represent this as
+    # `Product(('A', 'B'), ('A', 'B'), ('A', 'B'))` to avoid erroneous results such as
+    #   ('AB', 'A', 'B') in P     -> True
+    #   P.index(('AB', 'A', 'B')) -> 1
+    #   P.count(('AB', 'A', 'B')) -> 1
+    # without a lot of special-case logic to account for string factors in each method
+    # and handle possible ValueErrors.
+    # Instead we consolidated all the special-case handling to __init__'s conversion
+    # of string factors to tuples.
+    
     def __contains__(self, item):
         """Return `item in self`.
-        True iff each element of `item` is in the corresponding input to `self`.
-        False iff `item` has a plausible type to belong to `self` but doesn't; `TypeError` is not caught.
+        
+        Raises TypeError if `item` is not a tuple. Otherwise, returns True if each element of `item`
+        is in the corresponding input to `self`, False otherwise.
         
         Examples:
             >>> (1, 'A') in Product((0,1), "AB")
@@ -198,34 +222,47 @@ class Product(SeqReversible):
             False
         
             >>> (1, 1) in Product((0,1), "AB")
-            Traceback (most recent call last):
-              ...
-            TypeError: 'in <string>' requires string as left operand, not int
+            False
         
             >>> 1 in Product((0,1), repeat=3)
             Traceback (most recent call last):
               ...
-            TypeError: 'int' object is not subscriptable
+            TypeError: 'in <Product>' requires tuple as left operand, not int
         """
-        return all(item[i] in s for i,s in enumerate(self._sequences))
+        if not isinstance(item, tuple):
+            raise TypeError("'in <{}>' requires tuple as left operand, not {}".format(type(self).__name__, type(item).__name__))
+        sentinel = object()
+        return all(elem in factor for elem, factor in itertools.zip_longest(item, self._sequences, fillvalue=sentinel))
         # Correctness argument: This is the definition of the Cartesian product.
-        
-        # THIS METHOD NEEDS TO BE RETHOUGHT.
-        # `(1, 0) in Product((0,1), "AB")` raises TypeError:
-        #   first we see that `1 in (0,1)`, so then we check `0 in "AB"` and raise TypeError.
-        # BUT
-        # `(2, 0) in Product((0,1), "AB")` returns False:
-        #   because `2 in (0, 1)` is False, evaluation of `all` short-circuits.
-        # PROPOSAL: only raise TypeError in a case like `1 in Product((0,1), repeat=3)` where the given item is not even a tuple.
-        # if not isinstance(item, tuple):
-        #   raise TypeError("'in <{}>' requires tuple as left operand, not {}".format(type(self), type(item)))
-        # otherwise catch TypeErrors where an element of `item` is incompatible with the corresponding factor and return False
     
-    def index(self, item):
-        raise NotImplementedError
+    def index(self, item): #, start = 0, stop = None): # Future: consider supporting start, stop parameters
+        i = 0
+        for elem, factor in zip(item, self._sequences):
+            i *= len(factor) # Future: overflow safety?
+            i += factor.index(elem) # Raises ValueError if `elem` not found in `factor`, therefore `item` not found in `self`.
+        return i
     
     def count(self, item):
-        raise NotImplementedError
+        """Count the number of occurrences of `item` in `self`."""
+    
+        if not isinstance(item, tuple):
+            return 0
+            
+        # The number of ways that `item` can be formed as a tuple taking elements successively from `self._sequences`
+        # is the product of the numbers of ways that each element of `item` occurs in its corresponding
+        # factor of `self`.
+        sentinel = object()
+        elem_factor_pairs = itertools.zip_longest(item, self._sequences, fillvalue=sentinel)
+        ways = 1
+        for elem, factor in elem_factor_pairs:            
+            ways *= factor.count(elem)
+            if ways == 0:
+                return 0
+        return ways
+        # Equivalent to:
+        #   return functools.reduce(operator.mul, (factor.count(elem) for elem, factor in elem_factor_pairs), 1)
+        # but this implementation short-circuits as soon as the element fails to be found in any factor.
+            
 
 class _ProductSlice(SeqSlice):
     def __iter__(self):
