@@ -235,13 +235,26 @@ class Product(SeqReversible):
         """
         if not isinstance(item, tuple):
             raise TypeError("'in <{}>' requires tuple as left operand, not {}".format(type(self).__name__, type(item).__name__))
-        sentinel = object()
-        return all(elem in factor for elem, factor in itertools.zip_longest(item, self._sequences, fillvalue=sentinel))
+        if len(item) != len(self._sequences): # Explicit test guarantees expected result of `zip` below
+            return False
+        return all(elem in factor for elem, factor in zip(item, self._sequences))
         # Correctness argument: This is the definition of the Cartesian product.
+        
+        # We could avoid the explicit length check by writing
+        #   sentinel = (x for x in ()) # Empty generator
+        #   return all(elem in factor for elem, factor in itertools.zip_longest(item, self._sequences, fillvalue=sentinel))
+        # but this is somewhat mysterious to read.
     
     def index(self, item): #, start = 0, stop = None): # Future: consider supporting start, stop parameters
+        if self._sequences == (): # Special case
+            if item == ():
+                return 0
+            #else:
+            raise ValueError("Product.index(x): x = {} not in Product".format(item))
+        
         i = 0
-        for elem, factor in zip(item, self._sequences):
+        for elem, factor in zip(item, self._sequences): # If self._sequences is empty this falls through immediately & returns zero
+                                                        # which is why we had to special-case that situation above.
             i *= len(factor) # Future: overflow safety?
             i += factor.index(elem) # Raises ValueError if `elem` not found in `factor`, therefore `item` not found in `self`.
         return i
@@ -251,12 +264,14 @@ class Product(SeqReversible):
     
         if not isinstance(item, tuple):
             return 0
+        if len(item) != len(self._sequences): # Same reasoning as in __contains__
+            return 0
             
         # The number of ways that `item` can be formed as a tuple taking elements successively from `self._sequences`
         # is the product of the numbers of ways that each element of `item` occurs in its corresponding
         # factor of `self`.
         sentinel = object()
-        elem_factor_pairs = itertools.zip_longest(item, self._sequences, fillvalue=sentinel)
+        elem_factor_pairs = zip(item, self._sequences)
         ways = 1
         for elem, factor in elem_factor_pairs:            
             ways *= factor.count(elem)

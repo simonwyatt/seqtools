@@ -211,8 +211,43 @@ class TestProduct(unittest.TestCase):
     # Search #
     ##########
     
-    # TO DO
+    def test_search_string_factors(self):
+        # Test against regression of incorrect behavior related strings' search methods searching for substrings
+        P = Product('AB', repeat=3)
+        bad_item = ('AB', 'A', 'B')
+        self.assertFalse(bad_item in P)
+        with self.assertRaises(ValueError):
+            P.index(bad_item)
+        self.assertEqual(P.count(bad_item), 0)
+    
+    def test_search(self):
+        params = (
+            (),
+            ((0,), (1,), (2,)),
+            ((0,1,2), (0,1,2), (0,1,2)),
+            ((0,1,0,1), (0, 0, 0), (1, 2, 2))
+        )
+        items = (
+            (0, 0, 0),
+            (0, 1, 2),
+            (1, 0, 1)
+        )
         
+        for seqs in params:
+             with self.subTest(seqs=seqs):
+                instance  = Product(*seqs)
+                reference = tuple(itertools.product(*seqs))
+                for item in items:
+                    with self.subTest(item=item):
+                        self.assertEqual(item in instance, item in reference)
+       
+                        if item in reference:
+                            self.assertEqual(instance.index(item), reference.index(item))
+                        else:
+                            with self.assertRaises(ValueError):
+                                instance.index(item)
+                        
+                        self.assertEqual(instance.count(item), reference.count(item))
 
 if __name__ == '__main__':
     unittest.main()
