@@ -30,6 +30,10 @@ Combinatoric sequences versus constructing a tuple from an `itertools` generator
 
 Classes:
     Product: Cartesian product of sequences.
+    Permutations
+    Combinations
+    CombinationsWithReplacement
+    Partitions
 """
 
 import itertools, functools, operator
@@ -348,6 +352,214 @@ class _ProductSlice(SeqSlice):
         
         # Correctness argument:
         # PENDING. Most complex and most important method for products, will have most complex & important proof.
+
+class Permutations(SeqReversible):
+    ################
+    # Construction #
+    ################
+    
+    def __iter__(self, seq, r = None):
+        raise NotImplementedError
+    
+    def _seqtools_reversed(self):
+        raise NotImplementedError
+    
+    def __repr__(self):
+        raise NotImplementedError
+    
+    ##########
+    # Length #
+    ##########
+    
+    def len(self):
+        raise NotImplementedError
+    def __len__(self):
+        return self.len()
+    
+    ###############
+    # Item access #
+    ###############
+    
+    def __getitem__(self, index):
+        raise NotImplementedError
+    
+    #############
+    # Iteration #
+    #############
+    
+    def __iter__(self):
+        raise NotImplementedError
+    def __reversed__(self):
+        raise NotImplementedError
+    
+    ##########
+    # Search #
+    ##########
+    
+    def __contains__(self, item):
+        raise NotImplementedError
+    
+    def index(self, item): #, start, stop):
+        raise NotImplementedError
+    
+    def count(self, item):
+        raise NotImplementedError
+        
+class Combinations(SeqReversible):
+    ################
+    # Construction #
+    ################
+    
+    def __iter__(self, seq, r):
+        raise NotImplementedError
+    
+    def _seqtools_reversed(self):
+        raise NotImplementedError
+    
+    def __repr__(self):
+        raise NotImplementedError
+    
+    ##########
+    # Length #
+    ##########
+    
+    def len(self):
+        raise NotImplementedError
+    def __len__(self):
+        return self.len()
+    
+    ###############
+    # Item access #
+    ###############
+    
+    def __getitem__(self, index):
+        raise NotImplementedError
+    
+    #############
+    # Iteration #
+    #############
+    
+    def __iter__(self):
+        raise NotImplementedError
+    def __reversed__(self):
+        raise NotImplementedError
+    
+    ##########
+    # Search #
+    ##########
+    
+    def __contains__(self, item):
+        raise NotImplementedError
+    
+    def index(self, item): #, start, stop):
+        raise NotImplementedError
+    
+    def count(self, item):
+        raise NotImplementedError
+
+class CombinationsWithReplacement(SeqReversible):
+    ################
+    # Construction #
+    ################
+    
+    def __iter__(self, seq, r):
+        raise NotImplementedError
+    
+    def _seqtools_reversed(self):
+        raise NotImplementedError
+    
+    def __repr__(self):
+        raise NotImplementedError
+    
+    ##########
+    # Length #
+    ##########
+    
+    def len(self):
+        raise NotImplementedError
+    def __len__(self):
+        return self.len()
+    
+    ###############
+    # Item access #
+    ###############
+    
+    def __getitem__(self, index):
+        raise NotImplementedError
+    
+    #############
+    # Iteration #
+    #############
+    
+    def __iter__(self):
+        raise NotImplementedError
+    def __reversed__(self):
+        raise NotImplementedError
+    
+    ##########
+    # Search #
+    ##########
+    
+    def __contains__(self, item):
+        raise NotImplementedError
+    
+    def index(self, item): #, start, stop):
+        raise NotImplementedError
+    
+    def count(self, item):
+        raise NotImplementedError
+
+class Partitions(SeqReversible):
+    ################
+    # Construction #
+    ################
+    
+    def __iter__(self, seq, n, r):
+        raise NotImplementedError
+    
+    def _seqtools_reversed(self):
+        raise NotImplementedError
+    
+    def __repr__(self):
+        raise NotImplementedError
+    
+    ##########
+    # Length #
+    ##########
+    
+    def len(self):
+        raise NotImplementedError
+    def __len__(self):
+        return self.len()
+    
+    ###############
+    # Item access #
+    ###############
+    
+    def __getitem__(self, index):
+        raise NotImplementedError
+    
+    #############
+    # Iteration #
+    #############
+    
+    def __iter__(self):
+        raise NotImplementedError
+    def __reversed__(self):
+        raise NotImplementedError
+    
+    ##########
+    # Search #
+    ##########
+    
+    def __contains__(self, item):
+        raise NotImplementedError
+    
+    def index(self, item): #, start, stop):
+        raise NotImplementedError
+    
+    def count(self, item):
+        raise NotImplementedError
 
 if __name__ == "__main__":
     import doctest
