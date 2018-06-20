@@ -36,7 +36,7 @@ Classes:
     Partitions
 """
 
-import itertools, functools, operator
+import itertools, functools, operator, math
 from functools import reduce
 
 from reversed import Reversed, SeqReversible
@@ -139,7 +139,8 @@ class Product(SeqReversible):
         """
         # Correctness: By division into cases:
         if isinstance(index, slice):
-            return _ProductSlice(self, index) # See correctness argument in slice class
+            #return _ProductSlice(self, index) # See correctness argument in slice class
+            return type(self).Slice(self, index)
             # Future: Consider algebraic optimizations:
             # detect when step size divides length of last factor and return product object over smaller factor
             # if len(self._sequences[-1]) % index.step == 0: ...
@@ -287,71 +288,71 @@ class Product(SeqReversible):
         # but this implementation short-circuits as soon as the element fails to be found in any factor.
             
 
-class _ProductSlice(SeqSlice):
-    def __iter__(self):
-        ###############################
-        # Initialize generator state: #
-        ###############################
+    class Slice(SeqSlice):
+        def __iter__(self):
+            ###############################
+            # Initialize generator state: #
+            ###############################
         
-        start, stop, step = self._slice.start, self._slice.stop, self._slice.step
+            start, stop, step = self._slice.start, self._slice.stop, self._slice.step
         
-        # Initialize step: Normalize by rejecting zero and defaulting None -> 1
-        if step == 0:
-            raise ValueError("slice step cannot be zero")
-        if step is None:
-            step = 1
+            # Initialize step: Normalize by rejecting zero and defaulting None -> 1
+            if step == 0:
+                raise ValueError("slice step cannot be zero")
+            if step is None:
+                step = 1
 
-        # Initialize start: Normalize by clipping to bounds, handling None
-        L = self._baselen() # Precompute base length for repeated reuse
-        if start is None:
-            start = 0 if step>0 else -1
-        else:
-            if ((start >= L and step > 0)
-            or  (start < -L and step < 0)):
-                # Started too late to capture any items.
+            # Initialize start: Normalize by clipping to bounds, handling None
+            L = self._baselen() # Precompute base length for repeated reuse
+            if start is None:
+                start = 0 if step>0 else -1
+            else:
+                if ((start >= L and step > 0)
+                or  (start < -L and step < 0)):
+                    # Started too late to capture any items.
+                    return
+                elif start >= L and step < 0:
+                    # Clip to back.
+                    start = L - 1
+                elif start < -L and step > 0:
+                    # Clip to front
+                    start = -L
+        
+            if self._seq._sequences == (): # Special case for product of empty sequence of sequences:
+                                           # If we've gotten this far, capture the one item there and stop.
+                yield ()
                 return
-            elif start >= L and step < 0:
-                # Clip to back.
-                start = L - 1
-            elif start < -L and step > 0:
-                # Clip to front
-                start = -L
         
-        if self._seq._sequences == (): # Special case for product of empty sequence of sequences:
-                                       # If we've gotten this far, capture the one item there and stop.
-            yield ()
-            return
-        
-        # Initialize stop: None is okay, handled explicitly by generator. Convert to multi-index.
-        if stop is not None:
-            stop = list(self._seq._multi_index(stop)) # We won't mutate `stop`, but it has to be comparable to the mutable `indices`.
+            # Initialize stop: None is okay, handled explicitly by generator. Convert to multi-index.
+            if stop is not None:
+                stop = list(self._seq._multi_index(stop)) # We won't mutate `stop`, but it has to be comparable to the mutable `indices`.
             
-        ###################
-        # Generate items. #
-        ###################
+            ###################
+            # Generate items. #
+            ###################
         
-        indices = list( self._seq._multi_index(start) )
-        item = list(self._seq._elem_at(indices))
-        yield tuple(item) #The first one.
-        while stop is None or (step > 0 and indices < stop) or (step < 0 and stop < indices): # If stop is None we'll explicitly break when done.
-            indices[-1] += step
-            pos = len(self._seq._sequences) - 1
-            # Propagate carries back through multi-index, updating item as we go.
-            # We only update the entries of the item that need updating, instead of regenerating the entire item tuple when any part of the index changes,
-            # which is our principal efficiency gain over iteration by direct access to a range of individual elements.
-            while pos > 0 and not (0 <= indices[pos] < len(self._seq._sequences[pos])):
-                q, indices[pos] = divmod(indices[pos], len(self._seq._sequences[pos]))
-                indices[pos - 1] += q
-                item[pos] = self._seq._sequences[pos][indices[pos]]
-                pos -= 1
-            if pos == 0 and not (0 <= indices[pos] < len(self._seq._sequences[pos])): #Ran off end of product.
-                break # Here's the explicit break for if stop was None.
-            # else
-            item[pos] = self._seq._sequences[pos][indices[pos]] # One more time for last carry.
-            yield tuple(item)
+            indices = list( self._seq._multi_index(start) )
+            item = list(self._seq._elem_at(indices))
+            yield tuple(item) #The first one.
+            while stop is None or (step > 0 and indices < stop) or (step < 0 and stop < indices): # If stop is None we'll explicitly break when done.
+                indices[-1] += step
+                pos = len(self._seq._sequences) - 1
+                # Propagate carries back through multi-index, updating item as we go.
+                # We only update the entries of the item that need updating, instead of regenerating the entire item tuple when any part of the index changes,
+                # which is our principal efficiency gain over iteration by direct access to a range of individual elements.
+                while pos > 0 and not (0 <= indices[pos] < len(self._seq._sequences[pos])):
+                    q, indices[pos] = divmod(indices[pos], len(self._seq._sequences[pos]))
+                    indices[pos - 1] += q
+                    item[pos] = self._seq._sequences[pos][indices[pos]]
+                    pos -= 1
+                if pos == 0 and not (0 <= indices[pos] < len(self._seq._sequences[pos])): #Ran off end of product.
+                    break # Here's the explicit break for if stop was None.
+                # else
+                item[pos] = self._seq._sequences[pos][indices[pos]] # One more time for last carry.
+                yield tuple(item)
         
-        # Correctness argument:
-        # PENDING. Most complex and most important method for products, will have most complex & important proof.
+            # Correctness argument:
+            # PENDING. Most complex and most important method for products, will have most complex & important proof.
 
 class Permutations(SeqReversible):
     ################
@@ -359,20 +360,25 @@ class Permutations(SeqReversible):
     ################
     
     def __iter__(self, seq, r = None):
-        raise NotImplementedError
+        self._seq = seq
+        if r is None:
+            self._r = len(seq)
+        else:
+            self._r = r
     
     def _seqtools_reversed(self):
         raise NotImplementedError
     
     def __repr__(self):
-        raise NotImplementedError
+        return "{}({}, {})".format(type(self).__name__, self._seq, self._r)
     
     ##########
     # Length #
     ##########
     
     def len(self):
-        raise NotImplementedError
+        n = len(self._seq)
+        return math.factorial(n) // math.factorial(n - self._r)
     def __len__(self):
         return self.len()
     
@@ -388,7 +394,7 @@ class Permutations(SeqReversible):
     #############
     
     def __iter__(self):
-        raise NotImplementedError
+        return itertools.permutations(self._seq, self._r)
     def __reversed__(self):
         raise NotImplementedError
     
@@ -404,6 +410,9 @@ class Permutations(SeqReversible):
     
     def count(self, item):
         raise NotImplementedError
+    
+    class Slice(SeqSlice):
+        pass
         
 class Combinations(SeqReversible):
     ################

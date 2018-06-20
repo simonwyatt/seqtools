@@ -249,5 +249,27 @@ class TestProduct(unittest.TestCase):
                         
                         self.assertEqual(instance.count(item), reference.count(item))
 
+class TestPermutations(unittest.TestCase):
+    ################
+    # Construction #
+    ################
+    
+    ##########
+    # Length #
+    ##########
+    
+    ###############
+    # Item access #
+    ###############
+    
+    #############
+    # Iteration #
+    #############
+    
+    ##########
+    # Search #
+    ##########
+    pass
+
 if __name__ == '__main__':
     unittest.main()
